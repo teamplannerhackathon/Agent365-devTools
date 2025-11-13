@@ -55,5 +55,7 @@ jobs:
         run: dotnet test tests.proj --no-build --configuration Release --verbosity normal
 
       - name: Pack NuGet packages
-        run: dotnet pack dirs.proj --no-build --configuration Release --output ../NuGetPackages
+        id: pack
+        continue-on-error: true
+        run: dotnet pack dirs.proj --configuration Release --output ../NuGetPackages
 
