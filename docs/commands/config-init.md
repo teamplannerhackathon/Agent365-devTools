@@ -333,13 +333,6 @@ After running `a365 config init`:
    a365 deploy
    ```
 
-## Related Documentation
-
-- [Agent 365 CLI Overview](../../README.md)
-- [Setup Command Guide](./setup.md)
-- [Deployment Guide](./deploy.md)
-- [Troubleshooting Guide](../guides/troubleshooting.md)
-
 ## Support
 
 For issues or questions:
