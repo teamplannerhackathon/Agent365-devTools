@@ -105,7 +105,7 @@ public sealed class A365SetupRunner
             _logger.LogWarning("No deploymentProjectPath specified, defaulting to .NET runtime");
         }
 
-        _logger.LogInformation("Agent365 Setup - Starting...");
+        _logger.LogInformation("Agent 365 Setup - Starting...");
         _logger.LogInformation("Subscription: {Sub}", subscriptionId);
         _logger.LogInformation("Resource Group: {RG}", resourceGroup);
         _logger.LogInformation("App Service Plan: {Plan}", planName);
@@ -1065,7 +1065,7 @@ public sealed class A365SetupRunner
             {
                 ["passwordCredential"] = new JsonObject
                 {
-                    ["displayName"] = "Agent365 CLI Generated Secret",
+                    ["displayName"] = "Agent 365 CLI Generated Secret",
                     ["endDateTime"] = DateTime.UtcNow.AddYears(2).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
                 }
             };

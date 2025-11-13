@@ -1,8 +1,8 @@
 {
-  "version": "1.0.0",
+  "version": "1.0.0", // Update this version when you make changes to the manifest
   "id": "a99017af-5a99-4780-b000-1b7c7c825d55",
   "developer": {
-    "name": "Name of the developer",
+    "name": "specify name of developer",
     "websiteUrl": "https://go.microsoft.com/fwlink/?linkid=2138949",
     "privacyUrl": "https://go.microsoft.com/fwlink/?linkid=2138950",
     "termsOfUseUrl": "https://go.microsoft.com/fwlink/?linkid=2138865",
@@ -13,8 +13,8 @@
     "full": ""
   },
   "description": {
-    "short": "The SDK Agent is a sample agent built using the A365 SDK.",
-    "full": "The SDK Agent is an embodied A365 digital worker that gets triggered when there is a new lead created in CRM. It analyzes the lead details, generates a summary about the lead, and scores the lead to determine if it\u2019s a strong prospect"
+    "short": "Use this field to add a short description about the agent",
+    "full": "Use this field to add a full description about the agent"
   },
   "icons": {
     "outline": "outline.png",

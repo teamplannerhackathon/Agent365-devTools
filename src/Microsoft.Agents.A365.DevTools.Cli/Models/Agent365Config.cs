@@ -8,7 +8,7 @@ using Microsoft.Agents.A365.DevTools.Cli.Constants;
 namespace Microsoft.Agents.A365.DevTools.Cli.Models;
 
 /// <summary>
-/// Unified configuration model for Agent365 CLI.
+/// Unified configuration model for Agent 365 CLI.
 /// Merges static configuration (from a365.config.json) and dynamic state (from a365.generated.config.json).
 /// 
 /// DESIGN PATTERN: Hybrid Merged Model (Option C)
@@ -69,7 +69,7 @@ public class Agent365Config
     public string Location { get; init; } = string.Empty;
 
     /// <summary>
-    /// Target environment for Agent365 services (test, preprod, prod).
+    /// Target environment for Agent 365 services (test, preprod, prod).
     /// Controls which endpoints are used for Teams Graph API, Agent 365 Tools, etc.
     /// Default: preprod
     /// </summary>

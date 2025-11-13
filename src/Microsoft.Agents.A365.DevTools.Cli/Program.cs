@@ -36,7 +36,7 @@ class Program
         {
             // Log startup info to file
             Log.Information("==========================================================");
-            Log.Information("Agent365 CLI - Command: {Command}", commandName);
+            Log.Information("Agent 365 CLI - Command: {Command}", commandName);
             Log.Information("Version: {Version}", GetDisplayVersion());
             Log.Information("Log file: {LogFile}", logFilePath);
             Log.Information("Started at: {Time}", DateTime.Now);
@@ -52,7 +52,7 @@ class Program
             var serviceProvider = services.BuildServiceProvider();
 
             // Create root command
-            var rootCommand = new RootCommand($"Agent365 Developer Tools CLI v{version} – Build, deploy, and manage AI agents for Microsoft 365.");
+            var rootCommand = new RootCommand($"Agent 365 Developer Tools CLI v{version} – Build, deploy, and manage AI agents for Microsoft 365.");
 
             // Get loggers and services
             var setupLogger = serviceProvider.GetRequiredService<ILogger<SetupCommand>>();

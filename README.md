@@ -1,11 +1,11 @@
-# Agent365 CLI
+# Agent 365 CLI
 
-A command-line tool for deploying and managing Agent365 applications on Azure. 
+A command-line tool for deploying and managing Agent 365 applications on Azure. 
 
 ## Supported Platforms
 - ✅ .NET Applications
 - ✅ Node.js Applications  
-- ✅ **Python Applications** (Auto-detects via `pyproject.toml`, handles Agent365 dependencies, converts .env to Azure App Settings)
+- ✅ **Python Applications** (Auto-detects via `pyproject.toml`, handles Agent 365 dependencies, converts .env to Azure App Settings)
 
 ## Quick Start
 
@@ -41,7 +41,7 @@ The interactive setup includes helpful prompts with:
   "resourceGroup": "rg-agent365-dev",
   "location": "eastus",
   "webAppName": "webapp-agent365-dev",
-  "agentIdentityDisplayName": "Agent365 Development Agent",
+  "agentIdentityDisplayName": "Agent 365 Development Agent",
   "agentUserPrincipalName": "agent.username@yourdomain.onmicrosoft.com",
   "agentUserDisplayName": "Username's Agent User",
   "deploymentProjectPath": "./src"
@@ -126,7 +126,7 @@ a365 develop --list
 
 ## Multiplatform Deployment Support
 
-The Agent365 CLI automatically detects and deploys applications built with:
+The Agent 365 CLI automatically detects and deploys applications built with:
 
 ### .NET Applications
 - **Detection:** Looks for `*.csproj`, `*.fsproj`, or `*.vbproj` files
@@ -147,9 +147,9 @@ The Agent365 CLI automatically detects and deploys applications built with:
 - **Requirements:** Python 3.11+ and pip installed
 - **Special Features:**
   - Automatically converts `.env` to Azure App Settings
-  - Handles local Agent365 packages via `--find-links dist`
+  - Handles local Agent 365 packages via `--find-links dist`
   - Creates `requirements.txt` with `--pre` flag for pre-release packages
-  - Detects Agent365 entry points (`start_with_generic_host.py`)
+  - Detects Agent 365 entry points (`start_with_generic_host.py`)
   - Sets correct Python startup command automatically
 
 ### Deployment Example

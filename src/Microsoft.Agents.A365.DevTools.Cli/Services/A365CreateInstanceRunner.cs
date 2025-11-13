@@ -436,7 +436,7 @@ public sealed class A365CreateInstanceRunner
         }
 
         _logger.LogInformation("All phases complete. Instance state saved: {Path}", generatedConfigPath);
-        _logger.LogInformation("All phases complete. Agent365 instance is ready.");
+        _logger.LogInformation("All phases complete. Agent 365 instance is ready.");
 
         return true;
     }
