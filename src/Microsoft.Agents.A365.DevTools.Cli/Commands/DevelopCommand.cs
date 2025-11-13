@@ -700,22 +700,6 @@ public static class DevelopCommand
 
         return command;
     }
-    private static string GetPowerPlatformResourceUrl(string discoverEndpointUrl)
-    {
-        if (string.IsNullOrWhiteSpace(discoverEndpointUrl))
-            throw new ArgumentException("discoverEndpointUrl cannot be null or empty.", nameof(discoverEndpointUrl));
-
-        // Normalize to lower for comparison
-        var url = discoverEndpointUrl.ToLowerInvariant();
-
-        if (url.Contains("test.agent365.svc.cloud"))
-            return "https://api.test.powerplatform.com";
-        if (url.Contains("preprod.agent365.svc.cloud"))
-            return "https://api.preprod.powerplatform.com";
-
-        // Default fallback 
-        return "https://api.powerplatform.com";
-    }
 
     /// <summary>
     /// Upserts MCP servers in the manifest by updating existing servers with latest catalog information

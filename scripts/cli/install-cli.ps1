@@ -1,5 +1,5 @@
 # install-cli.ps1
-# This script installs the Agent365 CLI from a local NuGet package in the publish folder.
+# This script installs the Agent 365 CLI from a local NuGet package in the publish folder.
 # Usage: Run this script from the root of the extracted package (where publish/ exists)
 
 
@@ -30,7 +30,7 @@ if (-not $nupkg) {
     exit 1
 }
 
-Write-Host "Installing Agent365 CLI from local package: $($nupkg.Name)"
+Write-Host "Installing Agent 365 CLI from local package: $($nupkg.Name)"
 
 # Uninstall any existing global CLI tool
 try {
@@ -45,4 +45,4 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-Write-Host "Agent365 CLI installed successfully. Run 'a365 --help' to verify installation."
+Write-Host "Agent 365 CLI installed successfully. Run 'a365 --help' to verify installation."

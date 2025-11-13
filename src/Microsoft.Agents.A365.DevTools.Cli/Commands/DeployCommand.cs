@@ -18,7 +18,7 @@ public class DeployCommand
         IAzureValidator azureValidator)
     {
         // Top-level command name set to 'deploy' so it appears in CLI help as 'deploy'
-        var command = new Command("deploy", "Deploy Agent365 application binaries to the configured Azure App Service");
+        var command = new Command("deploy", "Deploy Agent 365 application binaries to the configured Azure App Service");
 
         var configOption = new Option<FileInfo>(
             new[] { "--config", "-c" },
@@ -126,7 +126,7 @@ public class DeployCommand
     }
 
     /// <summary>
-    /// Convert Agent365Config to DeploymentConfiguration
+    /// Convert Agent 365Config to DeploymentConfiguration
     /// </summary>
     private static DeploymentConfiguration ConvertToDeploymentConfig(Agent365Config config)
     {

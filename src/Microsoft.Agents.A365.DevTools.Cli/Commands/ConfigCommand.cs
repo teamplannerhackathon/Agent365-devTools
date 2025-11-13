@@ -22,7 +22,7 @@ public static class ConfigCommand
 
     private static Command CreateInitSubcommand(ILogger logger, string configDir)
     {
-        var cmd = new Command("init", "Initialize configuration settings for Azure resources, agent identity,\nand deployment options used by subsequent Agent365 commands")
+        var cmd = new Command("init", "Initialize configuration settings for Azure resources, agent identity,\nand deployment options used by subsequent Agent 365 commands")
         {
             new Option<string?>(new[] { "-c", "--configfile" }, "Path to a config file to import"),
             new Option<bool>(new[] { "--global", "-g" }, "Create config in global directory (AppData) instead of current directory")
@@ -177,7 +177,7 @@ public static class ConfigCommand
                 
                 Console.WriteLine();
                 Console.WriteLine("----------------------------------------------");
-                Console.WriteLine(" Agent365 CLI - Configuration Setup");
+                Console.WriteLine(" Agent 365 CLI - Configuration Setup");
                 Console.WriteLine("----------------------------------------------");
                 Console.WriteLine();
                 
@@ -188,7 +188,7 @@ public static class ConfigCommand
                 }
                 else
                 {
-                    Console.WriteLine("Setting up your Agent365 CLI configuration.");
+                    Console.WriteLine("Setting up your Agent 365 CLI configuration.");
                     Console.WriteLine("Please provide the required configuration details below.");
                 }
                 Console.WriteLine();
@@ -255,7 +255,7 @@ public static class ConfigCommand
                     AgentIdentityDisplayName = PromptWithHelp(
                         "Agent Identity Display Name",
                         "Human-readable name for your agent identity.\n              This will appear in Azure Active Directory and admin interfaces.\n              Use a descriptive name to easily identify this agent.",
-                        existingConfig?.AgentIdentityDisplayName ?? $"{CultureInfo.CurrentCulture.TextInfo.ToTitleCase(userName)}'s Agent365 Instance {timestamp}"
+                        existingConfig?.AgentIdentityDisplayName ?? $"{CultureInfo.CurrentCulture.TextInfo.ToTitleCase(userName)}'s Agent 365 Instance {timestamp}"
                     ),
                     
                     AgentUserPrincipalName = PromptWithHelp(

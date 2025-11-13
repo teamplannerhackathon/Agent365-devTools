@@ -326,7 +326,9 @@ For build, test, architecture, and contributing instructions, see [DEVELOPER.md]
 
 ## License
 
-[Your license information]
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+Licensed under the MIT License - see the [LICENSE](LICENSE.md) file for details.
 
 ---
 

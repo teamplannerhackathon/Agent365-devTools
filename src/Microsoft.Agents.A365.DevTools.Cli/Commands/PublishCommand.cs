@@ -21,24 +21,21 @@ namespace Microsoft.Agents.A365.DevTools.Cli.Commands;
 public class PublishCommand
 {
     // MOS Titles service URLs
-    private const string MosTitlesUrlTest = "https://titles.msit.mos.microsoft.com";
     private const string MosTitlesUrlProd = "https://titles.prod.mos.microsoft.com";
     
-    // Test tenant ID that uses MSIT endpoint
-    private const string TestTenantId = "5369a35c-46a5-4677-8ff9-2e65587654e7";
-
     /// <summary>
-    /// Gets the appropriate MOS Titles URL based on tenant ID
+    /// Gets the appropriate MOS Titles URL based on environment variable override or defaults to production.
+    /// Set MOS_TITLES_URL environment variable to override the default production URL.
     /// </summary>
-    /// <param name="tenantId">Tenant ID to check</param>
-    /// <returns>MOS Titles base URL (test or production)</returns>
+    /// <param name="tenantId">Tenant ID (not used, kept for backward compatibility)</param>
+    /// <returns>MOS Titles base URL from environment variable or production default</returns>
     private static string GetMosTitlesUrl(string? tenantId)
     {
-        // Use test URL for specific test tenant, production URL for all others
-        if (!string.IsNullOrWhiteSpace(tenantId) && 
-            tenantId.Equals(TestTenantId, StringComparison.OrdinalIgnoreCase))
+        // Check for environment variable override
+        var envUrl = Environment.GetEnvironmentVariable("MOS_TITLES_URL");
+        if (!string.IsNullOrWhiteSpace(envUrl))
         {
-            return MosTitlesUrlTest;
+            return envUrl;
         }
         
         return MosTitlesUrlProd;
@@ -92,7 +89,7 @@ public class PublishCommand
 
         var dryRunOption = new Option<bool>("--dry-run", "Show changes without writing file or calling APIs");
         var skipGraphOption = new Option<bool>("--skip-graph", "Skip Graph federated identity and role assignment steps");
-        var mosEnvOption = new Option<string>("--mos-env", () => "prod", "MOS environment identifier (e.g. prod, preprod, test, dev)");
+        var mosEnvOption = new Option<string>("--mos-env", () => "prod", "MOS environment identifier (e.g. prod, dev) - use MOS_TITLES_URL environment variable for custom URLs");
         var mosPersonalTokenOption = new Option<string?>("--mos-token", () => Environment.GetEnvironmentVariable("MOS_PERSONAL_TOKEN"), "Override MOS token (personal token) - bypass script & cache");
         command.AddOption(dryRunOption);
         command.AddOption(skipGraphOption);

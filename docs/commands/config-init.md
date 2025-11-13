@@ -149,8 +149,8 @@ The CLI provides intelligent defaults based on your environment:
 
 | Field | Default Value | Logic |
 |-------|---------------|-------|
-| **agentIdentityDisplayName** | `John's Agent365 Instance 20241112T153045` | `<Username>'s Agent365 Instance <Timestamp>` |
-| **agentBlueprintDisplayName** | `John's Agent365 Blueprint` | `<Username>'s Agent365 Blueprint` |
+| **agentIdentityDisplayName** | `John's Agent 365 Instance 20241112T153045` | `<Username>'s Agent 365 Instance <Timestamp>` |
+| **agentBlueprintDisplayName** | `John's Agent 365 Blueprint` | `<Username>'s Agent 365 Blueprint` |
 | **agentUserPrincipalName** | `agent.john@yourdomain.onmicrosoft.com` | `agent.<username>@yourdomain.onmicrosoft.com` |
 | **agentUserDisplayName** | `John's Agent User` | `<Username>'s Agent User` |
 | **deploymentProjectPath** | `C:\projects\current-directory` | Current working directory |
@@ -255,7 +255,7 @@ a365 setup --config configs/a365.config.prod.json
 - Add to `.gitignore`:
 
 ```gitignore
-# Agent365 generated configs with secrets
+# Agent 365 generated configs with secrets
 a365.generated.config.json
 ```
 
@@ -335,7 +335,7 @@ After running `a365 config init`:
 
 ## Related Documentation
 
-- [Agent365 CLI Overview](../../README.md)
+- [Agent 365 CLI Overview](../../README.md)
 - [Setup Command Guide](./setup.md)
 - [Deployment Guide](./deploy.md)
 - [Troubleshooting Guide](../guides/troubleshooting.md)
@@ -343,6 +343,6 @@ After running `a365 config init`:
 ## Support
 
 For issues or questions:
-- **GitHub Issues**: [Agent365 Repository](https://github.com/microsoft/Agent365/issues)
+- **GitHub Issues**: [Agent 365 Repository](https://github.com/microsoft/Agent365-devTools/issues)
 - **Documentation**: [Microsoft Learn](https://learn.microsoft.com/agent365)
 - **Community**: [Microsoft Tech Community](https://techcommunity.microsoft.com)

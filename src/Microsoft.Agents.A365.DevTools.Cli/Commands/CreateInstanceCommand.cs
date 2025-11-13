@@ -48,7 +48,7 @@ public class CreateInstanceCommand
         {
             if (dryRun)
             {
-                logger.LogInformation("DRY RUN: Agent365 Instance Creation - All Steps");
+                logger.LogInformation("DRY RUN: Agent 365 Instance Creation - All Steps");
                 logger.LogInformation("This would execute the following operations:");
                 logger.LogInformation("  1. Create Agent Identity and Agent User");
                 logger.LogInformation("  2. Add licenses to Agent User");
@@ -57,7 +57,7 @@ public class CreateInstanceCommand
                 return;
             }
 
-            logger.LogInformation("Agent365 Instance Creation - All Steps");
+            logger.LogInformation("Agent 365 Instance Creation - All Steps");
             logger.LogInformation("Creating agent instance with full configuration...\n");
             
             try
@@ -245,7 +245,7 @@ public class CreateInstanceCommand
                 await configService.SaveStateAsync(instanceConfig);
                 logger.LogInformation("Configuration updated and saved successfully");
 
-                logger.LogInformation("Agent365 instance creation completed successfully!");
+                logger.LogInformation("Agent 365 instance creation completed successfully!");
 
                 // Sync generated config in project settings from deployment project
                 try

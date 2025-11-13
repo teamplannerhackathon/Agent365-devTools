@@ -30,7 +30,7 @@ public class AuthenticationService
     /// <summary>
     /// Gets an access token for Agent365, using cached token if valid or prompting for authentication
     /// </summary>
-    /// <param name="resourceUrl">The resource URL to request a token for (e.g., https://test.agent365.svc.cloud.microsoft)</param>
+    /// <param name="resourceUrl">The resource URL to request a token for (e.g., https://agent365.svc.cloud.microsoft or environment-specific URL)</param>
     /// <param name="forceRefresh">Force token refresh even if cached token is valid</param>
     public async Task<string> GetAccessTokenAsync(string resourceUrl, bool forceRefresh = false)
     {
