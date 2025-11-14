@@ -394,7 +394,6 @@ public class ConfigurationWizardService : IConfigurationWizardService
     {
         var cleanName = System.Text.RegularExpressions.Regex.Replace(agentName, @"[^a-zA-Z0-9]", "").ToLowerInvariant();
         var timestamp = DateTime.Now.ToString("MMddHHmm");
-        var userName = Environment.UserName.ToLowerInvariant();
 
         return new ConfigDerivedNames
         {

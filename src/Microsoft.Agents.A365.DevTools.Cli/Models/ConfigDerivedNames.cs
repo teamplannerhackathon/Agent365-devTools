@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-namespace Microsoft.Agents.A365.DevTools.Cli.Services;
+namespace Microsoft.Agents.A365.DevTools.Cli.Models;
 
 /// <summary>
 /// Contains derived names generated from an agent name during configuration initialization
