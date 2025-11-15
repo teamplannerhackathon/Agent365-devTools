@@ -496,8 +496,7 @@ public sealed class A365SetupRunner
     }
 
     /// <summary>
-    /// Create Agent Blueprint using Microsoft Graph API (native C# implementation)
-    /// Replaces createAgentBlueprint.ps1
+    /// Create Agent Blueprint using Microsoft Graph API 
     /// 
     /// IMPORTANT: This requires interactive authentication with Application.ReadWrite.All permission.
     /// Uses the same authentication flow as Connect-MgGraph in PowerShell.
@@ -1060,7 +1059,6 @@ public sealed class A365SetupRunner
 
     /// <summary>
     /// Create a client secret for the Agent Blueprint using Microsoft Graph API.
-    /// Native C# implementation - no PowerShell dependencies.
     /// The secret is encrypted using DPAPI on Windows before storage.
     /// </summary>
     private async Task CreateBlueprintClientSecretAsync(
@@ -1317,6 +1315,14 @@ public sealed class A365SetupRunner
             {
                 _logger.LogError(ex, "Failed to get authenticated Graph client.");
                 _logger.LogWarning("Authentication failed, skipping inheritable permissions configuration.");
+                _logger.LogWarning("");
+                _logger.LogWarning("MANUAL CONFIGURATION REQUIRED:");
+                _logger.LogWarning("  You need to configure inheritable permissions manually in Azure Portal.");
+                _logger.LogWarning("  See documentation for detailed steps.");
+                _logger.LogWarning("");
+                
+                generatedConfig["inheritanceConfigured"] = false;
+                generatedConfig["inheritanceConfigError"] = "Authentication failed: " + ex.Message;
                 return;
             }
 
@@ -1324,7 +1330,16 @@ public sealed class A365SetupRunner
             if (string.IsNullOrWhiteSpace(graphToken))
             {
                 _logger.LogError("Failed to acquire Graph API access token");
-                throw new InvalidOperationException("Cannot update inheritable permissions without Graph API token");
+                _logger.LogWarning("Skipping inheritable permissions configuration");
+                _logger.LogWarning("");
+                _logger.LogWarning("MANUAL CONFIGURATION REQUIRED:");
+                _logger.LogWarning("  You need to configure inheritable permissions manually in Azure Portal.");
+                _logger.LogWarning("  See documentation for detailed steps.");
+                _logger.LogWarning("");
+                
+                generatedConfig["inheritanceConfigured"] = false;
+                generatedConfig["inheritanceConfigError"] = "Failed to acquire Graph API access token";
+                return;
             }
 
             // Read scopes from a365.config.json
@@ -1390,10 +1405,39 @@ public sealed class A365SetupRunner
                 }
                 else
                 {
-                    _logger.LogError("Failed to configure Graph inheritable permissions: {Status} - {Error}", 
-                        graphResponse.StatusCode, error);
-                    generatedConfig["inheritanceConfigured"] = false;
-                    generatedConfig["graphInheritanceError"] = error;
+                    // Check if this is an authorization error
+                    bool isAuthorizationError = 
+                        error.Contains("Authorization_RequestDenied", StringComparison.OrdinalIgnoreCase) ||
+                        error.Contains("Insufficient privileges", StringComparison.OrdinalIgnoreCase) ||
+                        graphResponse.StatusCode == System.Net.HttpStatusCode.Forbidden ||
+                        graphResponse.StatusCode == System.Net.HttpStatusCode.Unauthorized;
+                    
+                    if (isAuthorizationError)
+                    {
+                        _logger.LogError("Failed to configure Graph inheritable permissions: {Status} - {Error}", 
+                            graphResponse.StatusCode, error);
+                        _logger.LogError("");
+                        _logger.LogError("=== INSUFFICIENT PERMISSIONS DETECTED ===");
+                        _logger.LogError("");
+                        _logger.LogError("The current user account does not have sufficient privileges to configure inheritable permissions.");
+                        _logger.LogError("");
+                        foreach (var scope in inheritableScopes)
+                        {
+                            _logger.LogError("     - {Scope}", scope);
+                        }
+                        _logger.LogError("  5. Click 'Grant admin consent'");
+                        _logger.LogError("");
+                        
+                        generatedConfig["inheritanceConfigured"] = false;
+                        generatedConfig["graphInheritanceError"] = error;
+                    }
+                    else
+                    {
+                        _logger.LogError("Failed to configure Graph inheritable permissions: {Status} - {Error}", 
+                            graphResponse.StatusCode, error);
+                        generatedConfig["inheritanceConfigured"] = false;
+                        generatedConfig["graphInheritanceError"] = error;
+                    }
                 }
             }
             else
@@ -1445,9 +1489,26 @@ public sealed class A365SetupRunner
                 }
                 else
                 {
-                    _logger.LogError("Failed to configure Connectivity inheritable permissions: {Status} - {Error}", 
-                        connectivityResponse.StatusCode, error);
-                    generatedConfig["connectivityInheritanceError"] = error;
+                    // Check if this is an authorization error
+                    bool isAuthorizationError = 
+                        error.Contains("Authorization_RequestDenied", StringComparison.OrdinalIgnoreCase) ||
+                        error.Contains("Insufficient privileges", StringComparison.OrdinalIgnoreCase) ||
+                        connectivityResponse.StatusCode == System.Net.HttpStatusCode.Forbidden ||
+                        connectivityResponse.StatusCode == System.Net.HttpStatusCode.Unauthorized;
+                    
+                    if (isAuthorizationError)
+                    {
+                        _logger.LogError("Failed to configure Connectivity inheritable permissions: {Status} - {Error}", 
+                            connectivityResponse.StatusCode, error);
+                        _logger.LogError("See the troubleshooting steps above for resolving permission issues.");
+                        generatedConfig["connectivityInheritanceError"] = error;
+                    }
+                    else
+                    {
+                        _logger.LogError("Failed to configure Connectivity inheritable permissions: {Status} - {Error}", 
+                            connectivityResponse.StatusCode, error);
+                        generatedConfig["connectivityInheritanceError"] = error;
+                    }
                 }
             }
             else

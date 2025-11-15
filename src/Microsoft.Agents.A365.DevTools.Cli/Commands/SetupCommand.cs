@@ -439,8 +439,18 @@ public class SetupCommand
             throw new InvalidOperationException("Messaging endpoint provider registration failed");
         }
 
+        // Generate endpoint name with Azure Bot Service constraints (4-42 chars)
+        var baseEndpointName = $"{setupConfig.WebAppName}-endpoint";
+        var endpointName = baseEndpointName.Length > 42
+            ? baseEndpointName.Substring(0, 42)
+            : baseEndpointName;
+        if (endpointName.Length < 4)
+        {
+            logger.LogError("Bot endpoint name '{EndpointName}' is too short (must be at least 4 characters)", endpointName);
+            throw new InvalidOperationException($"Bot endpoint name '{endpointName}' is too short (must be at least 4 characters)");
+        }
+        
         // Register messaging endpoint using agent blueprint identity and deployed web app URL
-        var endpointName = $"{setupConfig.WebAppName}-endpoint";
         var messagingEndpoint = $"https://{setupConfig.WebAppName}.azurewebsites.net/api/messages";
         
         logger.LogInformation("   - Registering blueprint messaging endpoint");
