@@ -175,8 +175,11 @@ public class CreateInstanceCommand
                 var agentUserConfigPath = Path.Combine(Environment.CurrentDirectory, "agenticuser.config.json");
                 string? agenticAppId = instanceConfig.AgenticAppId;
                 string? agenticUserId = instanceConfig.AgenticUserId;
-                var endpointName = $"{instanceConfig.WebAppName}-endpoint";
-                
+                var baseEndpointName = $"{instanceConfig.WebAppName}-endpoint";
+                var endpointName = baseEndpointName.Length > 42
+                    ? baseEndpointName.Substring(0, 42)
+                    : baseEndpointName;
+
                 if (File.Exists(agentUserConfigPath))
                 {
                     logger.LogInformation("     - Reading agent identity from agenticuser.config.json");

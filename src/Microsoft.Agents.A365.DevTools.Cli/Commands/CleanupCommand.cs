@@ -177,6 +177,10 @@ public class CleanupCommand
                         throw new InvalidOperationException("Agent Blueprint ID is required for deleting endpoint registration");
                     }
 
+                    var endpointName = config.BotName.Length > 42
+                        ? config.BotName.Substring(0, 42)
+                        : config.BotName;
+
                     var endpointRegistered = await botConfigurator.DeleteEndpointWithAgentBlueprintAsync(
                         config.BotName,
                         config.Location,
