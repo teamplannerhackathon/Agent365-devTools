@@ -6,5 +6,6 @@ namespace Microsoft.Agents.A365.DevTools.Cli.Constants
     {
         public const string AzureAuthFailed = "AZURE_AUTH_FAILED";
         public const string PythonNotFound = "PYTHON_NOT_FOUND";
+        public const string DeploymentAppFailed = "DEPLOYMENT_APP_FAILED";
     }
 }

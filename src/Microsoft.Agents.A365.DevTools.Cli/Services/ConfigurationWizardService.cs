@@ -44,7 +44,7 @@ public class ConfigurationWizardService : IConfigurationWizardService
             if (parts.Length == 2 && !string.IsNullOrWhiteSpace(parts[1]))
                 return parts[1];
         }
-        return "onmicrosoft.com";
+        return string.Empty;
     }
 
     public async Task<Agent365Config?> RunWizardAsync(Agent365Config? existingConfig = null)
@@ -430,7 +430,7 @@ public class ConfigurationWizardService : IConfigurationWizardService
             WebAppName = webAppName,
             AgentIdentityDisplayName = $"{agentName} Identity",
             AgentBlueprintDisplayName = $"{agentName} Blueprint",
-            AgentUserPrincipalName = $"agent.{cleanName}@{domain}",
+            AgentUserPrincipalName = $"UPN.{cleanName}@{domain}",
             AgentUserDisplayName = $"{agentName} Agent User"
         };
     }

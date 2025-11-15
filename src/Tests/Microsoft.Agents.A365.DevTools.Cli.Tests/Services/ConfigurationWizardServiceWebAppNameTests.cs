@@ -52,8 +52,8 @@ public class ConfigurationWizardServiceWebAppNameTests
     [InlineData("sellak@testcsaaa.onmicrosoft.com", "testcsaaa.onmicrosoft.com")]
     [InlineData("user@contoso.com", "contoso.com")]
     [InlineData("admin@sub.domain.com", "sub.domain.com")]
-    [InlineData("invalid", "onmicrosoft.com")]
-    [InlineData("", "onmicrosoft.com")]
+    [InlineData("invalid", "")]
+    [InlineData("", "")]
     public void ExtractDomainFromAccount_HandlesVariousCases(string accountName, string expectedDomain)
     {
         var method = typeof(ConfigurationWizardService)

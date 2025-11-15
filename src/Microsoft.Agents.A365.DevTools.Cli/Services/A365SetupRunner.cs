@@ -30,6 +30,7 @@ public sealed class A365SetupRunner
     private const string ConnectivityResourceAppId = "0ddb742a-e7dc-4899-a31e-80e797ec7144"; // Connectivity
     private const string InheritablePermissionsResourceAppIdId = "00000003-0000-0ff1-ce00-000000000000";
     private const string MicrosoftGraphCommandLineToolsAppId = "14d82eec-204b-4c2f-b7e8-296a70dab67e"; // Microsoft Graph Command Line Tools
+    private const string DocumentationMessage = "See documentation at https://aka.ms/agent365/setup for more information.";
 
     public A365SetupRunner(
         ILogger<A365SetupRunner> logger, 
@@ -1318,7 +1319,7 @@ public sealed class A365SetupRunner
                 _logger.LogWarning("");
                 _logger.LogWarning("MANUAL CONFIGURATION REQUIRED:");
                 _logger.LogWarning("  You need to configure inheritable permissions manually in Azure Portal.");
-                _logger.LogWarning("  See documentation for detailed steps.");
+                _logger.LogWarning("  {DocumentationMessage}", DocumentationMessage);
                 _logger.LogWarning("");
                 
                 generatedConfig["inheritanceConfigured"] = false;
@@ -1334,7 +1335,7 @@ public sealed class A365SetupRunner
                 _logger.LogWarning("");
                 _logger.LogWarning("MANUAL CONFIGURATION REQUIRED:");
                 _logger.LogWarning("  You need to configure inheritable permissions manually in Azure Portal.");
-                _logger.LogWarning("  See documentation for detailed steps.");
+                _logger.LogWarning("  {DocumentationMessage}", DocumentationMessage);
                 _logger.LogWarning("");
                 
                 generatedConfig["inheritanceConfigured"] = false;

@@ -41,8 +41,6 @@ public sealed class InteractiveGraphAuthService
     /// <summary>
     /// Gets an authenticated GraphServiceClient using interactive browser authentication.
     /// This uses the Microsoft Graph PowerShell app ID to get the same elevated privileges.
-    /// 
-    /// PURE C# - NO POWERSHELL REQUIRED
     /// </summary>
     public Task<GraphServiceClient> GetAuthenticatedGraphClientAsync(
         string tenantId,
@@ -62,7 +60,7 @@ public sealed class InteractiveGraphAuthService
             var credential = new InteractiveBrowserCredential(new InteractiveBrowserCredentialOptions
             {
                 TenantId = tenantId,
-                ClientId = PowerShellAppId, // Use same app ID as PowerShell for consistency
+                ClientId = PowerShellAppId,
                 AuthorityHost = AzureAuthorityHosts.AzurePublicCloud,
                 // Redirect URI for interactive browser auth (standard for public clients)
                 RedirectUri = new Uri("http://localhost")
