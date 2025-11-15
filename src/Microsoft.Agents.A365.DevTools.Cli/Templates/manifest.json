@@ -2,12 +2,12 @@
   "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/vdevPreview/MicrosoftTeams.schema.json",
   "id": "43d5d6b0-5c91-4367-b716-4a78c901a3df",
   "name": {
-    "short": "Observability Service",
-    "full": "Observability Service"
+    "short": "Your Agent Name",
+    "full": "Your Agent Full Name"
   },
   "description": {
-    "short": "Analyze supplier spend and get instant insights for faster decisions.",
-    "full": "Mos Test helps you make smarter, faster decisions about supplier spend. Whether you're preparing for a negotiation or reviewing quarterly trends, the agent gives you instant access to insights without digging through spreadsheets or dashboards. The agent responds with clear summaries, tables, and recommendations, helping you spot patterns, flag anomalies, and prepare for supplier conversations. It’s designed to support procurement professionals who want to move quickly, stay informed, and drive better outcomes."
+    "short": "A brief description of what your agent does.",
+    "full": "A comprehensive description of your agent's capabilities and purpose. Explain what problems it solves, what data it can access, and how users will interact with it. This description helps users understand when and how to use your agent effectively."
   },
   "icons": {
     "outline": "outline.png",

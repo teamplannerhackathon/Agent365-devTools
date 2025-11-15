@@ -395,7 +395,10 @@ public class PublishCommand
                     HttpResponseMessage titlesResp;
                     try
                     {
-                        titlesResp = await http.PostAsync(titlesUrl, new StringContent(titlePayload, System.Text.Encoding.UTF8, "application/json"));
+                        using (var content = new StringContent(titlePayload, System.Text.Encoding.UTF8, "application/json"))
+                        {
+                            titlesResp = await http.PostAsync(titlesUrl, content);
+                        }
                     }
                     catch (HttpRequestException ex)
                     {
@@ -436,7 +439,8 @@ public class PublishCommand
                     HttpResponseMessage allowResp;
                     try
                     {
-                        allowResp = await http.PostAsync(allowUrl, new StringContent(allowedPayload, System.Text.Encoding.UTF8, "application/json"));
+                        using var content = new StringContent(allowedPayload, System.Text.Encoding.UTF8, "application/json");
+                        allowResp = await http.PostAsync(allowUrl, content);
                     }
                     catch (HttpRequestException ex)
                     {
