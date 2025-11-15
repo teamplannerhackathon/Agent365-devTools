@@ -92,7 +92,7 @@ class Program
             var configLogger = configLoggerFactory.CreateLogger("ConfigCommand");
             rootCommand.AddCommand(ConfigCommand.CreateCommand(configLogger));
             rootCommand.AddCommand(QueryEntraCommand.CreateCommand(queryEntraLogger, configService, executor, graphApiService));
-            rootCommand.AddCommand(CleanupCommand.CreateCommand(cleanupLogger, configService, executor));
+            rootCommand.AddCommand(CleanupCommand.CreateCommand(cleanupLogger, configService, botConfigurator, executor));
             rootCommand.AddCommand(PublishCommand.CreateCommand(publishLogger, configService, graphApiService));
 
             // Invoke

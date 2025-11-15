@@ -346,18 +346,6 @@ public class SetupCommand
             throw new InvalidOperationException("Web App Name is required for messaging endpoint registration");
         }
 
-        // Register Bot Service provider (hidden as messaging endpoint provider)
-        logger.LogInformation("   - Ensuring messaging endpoint provider is registered");
-        var providerRegistered = await botConfigurator.EnsureBotServiceProviderAsync(
-            setupConfig.SubscriptionId, 
-            setupConfig.ResourceGroup);
-        
-        if (!providerRegistered)
-        {
-            logger.LogError("Failed to register messaging endpoint provider");
-            throw new InvalidOperationException("Messaging endpoint provider registration failed");
-        }
-
         // Register messaging endpoint using agent blueprint identity and deployed web app URL
         var endpointName = $"{setupConfig.WebAppName}-endpoint";
         var messagingEndpoint = $"https://{setupConfig.WebAppName}.azurewebsites.net/api/messages";
@@ -367,39 +355,17 @@ public class SetupCommand
         logger.LogInformation("     * Messaging Endpoint: {Endpoint}", messagingEndpoint);
         logger.LogInformation("     * Using Agent Blueprint ID: {AgentBlueprintId}", setupConfig.AgentBlueprintId);
         
-        var endpointRegistered = await botConfigurator.CreateOrUpdateBotWithAgentBlueprintAsync(
-            appServiceName: setupConfig.WebAppName,
-            botName: endpointName,
-            resourceGroupName: setupConfig.ResourceGroup,
-            subscriptionId: setupConfig.SubscriptionId,
-            location: "global",
+        var endpointRegistered = await botConfigurator.CreateEndpointWithAgentBlueprintAsync(
+            endpointName: endpointName,
+            location: setupConfig.Location,
             messagingEndpoint: messagingEndpoint,
             agentDescription: "Agent 365 messaging endpoint for automated interactions",
-            sku: "F0",
             agentBlueprintId: setupConfig.AgentBlueprintId);
         
         if (!endpointRegistered)
         {
             logger.LogError("Failed to register blueprint messaging endpoint");
             throw new InvalidOperationException("Blueprint messaging endpoint registration failed");
-        }
-
-        // Configure channels (Teams, Email) as messaging integrations
-        logger.LogInformation("   - Configuring messaging integrations");
-        var integrationsConfigured = await botConfigurator.ConfigureChannelsAsync(
-            endpointName,
-            setupConfig.ResourceGroup,
-            enableTeams: true,
-            enableEmail: !string.IsNullOrEmpty(setupConfig.AgentUserPrincipalName),
-            agentUserPrincipalName: setupConfig.AgentUserPrincipalName);
-
-        if (integrationsConfigured)
-        {
-            logger.LogInformation("     - Messaging integrations configured successfully");
-        }
-        else
-        {
-            logger.LogWarning("     - Some messaging integrations failed to configure");
         }
     }
 

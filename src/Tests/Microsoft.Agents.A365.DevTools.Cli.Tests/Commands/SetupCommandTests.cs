@@ -78,6 +78,6 @@ public class SetupCommandTests
         // Dry-run should load config but must not call Azure/Bot services
         await _mockConfigService.Received(1).LoadAsync(Arg.Any<string>(), Arg.Any<string>());
         await _mockAzureValidator.DidNotReceiveWithAnyArgs().ValidateAllAsync(default!);
-        await _mockBotConfigurator.DidNotReceiveWithAnyArgs().CreateOrUpdateBotWithAgentBlueprintAsync(default!, default!, default!, default!, default!, default!, default!, default!, default!);
+        await _mockBotConfigurator.DidNotReceiveWithAnyArgs().CreateEndpointWithAgentBlueprintAsync(default!, default!, default!, default!, default!);
     }
 }

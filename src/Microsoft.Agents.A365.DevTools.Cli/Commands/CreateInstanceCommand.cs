@@ -217,24 +217,10 @@ public class CreateInstanceCommand
                 // Update configuration with the populated values
                 logger.LogInformation("Updating configuration with generated values...");
                 
-                // Get the actual Bot ID (Microsoft App ID) from Azure
-                logger.LogInformation("     Querying Bot ID from Azure portal...");
-                var botConfig = await botConfigurator.GetBotConfigurationAsync(instanceConfig.ResourceGroup, endpointName);
-                var actualBotId = botConfig?.Properties?.MsaAppId ?? endpointName;
-                
-                if (!string.IsNullOrEmpty(botConfig?.Properties?.MsaAppId))
-                {
-                    logger.LogInformation("     Retrieved Microsoft App ID: {AppId}", botConfig.Properties.MsaAppId);
-                }
-                else
-                {
-                    logger.LogWarning("     Could not retrieve Microsoft App ID from Azure, using bot name as fallback");
-                }
-                
                 // Update Agent365Config state properties
-                instanceConfig.BotId = actualBotId;
-                instanceConfig.BotMsaAppId = botConfig?.Properties?.MsaAppId;
-                instanceConfig.BotMessagingEndpoint = botConfig?.Properties?.Endpoint;
+                instanceConfig.BotId = instanceConfig.AgentBlueprintId ?? endpointName;
+                instanceConfig.BotMsaAppId = instanceConfig.AgentBlueprintId;
+                instanceConfig.BotMessagingEndpoint = $"https://{instanceConfig.WebAppName}.azurewebsites.net/api/messages";
                 
                 logger.LogInformation("     Agent Blueprint ID: {AgentBlueprintId}", instanceConfig.AgentBlueprintId);
                 logger.LogInformation("     Agent Instance ID: {AgenticAppId}", instanceConfig.AgenticAppId);

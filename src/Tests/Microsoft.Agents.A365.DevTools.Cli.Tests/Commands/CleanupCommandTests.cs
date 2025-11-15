@@ -15,6 +15,7 @@ public class CleanupCommandTests
 {
     private readonly ILogger<CleanupCommand> _mockLogger;
     private readonly IConfigService _mockConfigService;
+    private readonly BotConfigurator _mockBotConfigurator;
     private readonly CommandExecutor _mockExecutor;
 
     public CleanupCommandTests()
@@ -28,6 +29,8 @@ public class CleanupCommandTests
         // Default executor behavior for tests: return success for any external command to avoid launching real CLI tools
         _mockExecutor.ExecuteAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(new Microsoft.Agents.A365.DevTools.Cli.Services.CommandResult { ExitCode = 0, StandardOutput = string.Empty, StandardError = string.Empty }));
+        var mockBotLogger = Substitute.For<ILogger<BotConfigurator>>();
+        _mockBotConfigurator = Substitute.ForPartsOf<BotConfigurator>(mockBotLogger, _mockExecutor);
     }
 
     [Fact(Skip = "Test requires interactive confirmation - cleanup commands now enforce user confirmation instead of --force")]
@@ -37,7 +40,7 @@ public class CleanupCommandTests
         var config = CreateValidConfig();
         _mockConfigService.LoadAsync(Arg.Any<string>(), Arg.Any<string>()).Returns(config);
         
-        var command = CleanupCommand.CreateCommand(_mockLogger, _mockConfigService, _mockExecutor);
+        var command = CleanupCommand.CreateCommand(_mockLogger, _mockConfigService, _mockBotConfigurator, _mockExecutor);
         var args = new[] { "cleanup", "azure", "--config", "test.json" };
 
         // Act
@@ -64,7 +67,7 @@ public class CleanupCommandTests
         // Arrange
         var config = CreateValidConfig();
         _mockConfigService.LoadAsync(Arg.Any<string>(), Arg.Any<string>()).Returns(config);
-        var command = CleanupCommand.CreateCommand(_mockLogger, _mockConfigService, _mockExecutor);
+        var command = CleanupCommand.CreateCommand(_mockLogger, _mockConfigService, _mockBotConfigurator, _mockExecutor);
         var args = new[] { "cleanup", "instance", "--config", "test.json" };
 
         var originalIn = Console.In;
@@ -94,8 +97,8 @@ public class CleanupCommandTests
         // Arrange
         var config = CreateValidConfig();
         _mockConfigService.LoadAsync(Arg.Any<string>(), Arg.Any<string>()).Returns(config);
-        
-        var command = CleanupCommand.CreateCommand(_mockLogger, _mockConfigService, _mockExecutor);
+
+        var command = CleanupCommand.CreateCommand(_mockLogger, _mockConfigService, _mockBotConfigurator, _mockExecutor);
         var args = new[] { "cleanup", "--config", "test.json" };
 
         // Act
@@ -124,8 +127,8 @@ public class CleanupCommandTests
         // Arrange
         var config = CreateConfigWithMissingWebApp(); // Create config without web app name
         _mockConfigService.LoadAsync(Arg.Any<string>(), Arg.Any<string>()).Returns(config);
-        
-        var command = CleanupCommand.CreateCommand(_mockLogger, _mockConfigService, _mockExecutor);
+
+        var command = CleanupCommand.CreateCommand(_mockLogger, _mockConfigService, _mockBotConfigurator, _mockExecutor);
         var args = new[] { "cleanup", "azure", "--config", "test.json" };
 
         // Act
@@ -148,8 +151,8 @@ public class CleanupCommandTests
         // Arrange
         _mockConfigService.LoadAsync(Arg.Any<string>(), Arg.Any<string>())
             .Returns(Task.FromException<Agent365Config>(new FileNotFoundException("Config not found")));
-        
-        var command = CleanupCommand.CreateCommand(_mockLogger, _mockConfigService, _mockExecutor);
+
+        var command = CleanupCommand.CreateCommand(_mockLogger, _mockConfigService, _mockBotConfigurator, _mockExecutor);
         var args = new[] { "cleanup", "azure", "--config", "invalid.json" };
 
         // Act
@@ -169,7 +172,7 @@ public class CleanupCommandTests
     public void CleanupCommand_ShouldHaveCorrectSubcommands()
     {
         // Arrange & Act
-        var command = CleanupCommand.CreateCommand(_mockLogger, _mockConfigService, _mockExecutor);
+        var command = CleanupCommand.CreateCommand(_mockLogger, _mockConfigService, _mockBotConfigurator, _mockExecutor);
 
         // Assert - Verify command structure (what users see)
         Assert.Equal("cleanup", command.Name);
@@ -188,7 +191,7 @@ public class CleanupCommandTests
     public void CleanupCommand_ShouldHaveDefaultHandlerOptions()
     {
         // Arrange & Act
-        var command = CleanupCommand.CreateCommand(_mockLogger, _mockConfigService, _mockExecutor);
+        var command = CleanupCommand.CreateCommand(_mockLogger, _mockConfigService, _mockBotConfigurator, _mockExecutor);
 
         // Assert - Verify parent command has options for default handler
         var optionNames = command.Options.Select(opt => opt.Name).ToList();
@@ -201,7 +204,7 @@ public class CleanupCommandTests
     public void CleanupSubcommands_ShouldHaveRequiredOptions()
     {
         // Arrange & Act
-        var command = CleanupCommand.CreateCommand(_mockLogger, _mockConfigService, _mockExecutor);
+        var command = CleanupCommand.CreateCommand(_mockLogger, _mockConfigService, _mockBotConfigurator, _mockExecutor);
         var blueprintCommand = command.Subcommands.First(sc => sc.Name == "blueprint");
 
         // Assert - Verify user-facing options
@@ -217,8 +220,8 @@ public class CleanupCommandTests
         // Arrange
         var config = CreateValidConfig();
         _mockConfigService.LoadAsync(Arg.Any<string>(), Arg.Any<string>()).Returns(config);
-        
-        var command = CleanupCommand.CreateCommand(_mockLogger, _mockConfigService, _mockExecutor);
+
+        var command = CleanupCommand.CreateCommand(_mockLogger, _mockConfigService, _mockBotConfigurator, _mockExecutor);
         var args = new[] { "cleanup", "blueprint", "--config", "test.json" };
 
         // Act

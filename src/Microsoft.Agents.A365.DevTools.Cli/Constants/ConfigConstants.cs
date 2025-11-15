@@ -28,11 +28,30 @@ public static class ConfigConstants
     /// </summary>
     public const string ProductionDiscoverEndpointUrl = "https://agent365.svc.cloud.microsoft/agents/discoverToolServers";
 
+      /// <summary>
+    /// Production Agent 365 Tools Create endpoint URL
+    /// </summary>
+    public const string ProductionCreateEndpointUrl = "https://agent365.svc.cloud.microsoft/agents/botManagement/createAgentBlueprint";
+
+      /// <summary>
+    /// Production Agent 365 Tools Delete endpoint URL
+    /// </summary>
+    public const string ProductionDeleteEndpointUrl = "https://agent365.svc.cloud.microsoft/agents/botManagement/deleteAgentBlueprint";
+
     /// <summary>
     /// Messaging Bot API App ID
     /// </summary>
     public const string MessagingBotApiAppId = "5a807f24-c9de-44ee-a3a7-329e88a00ffc";
 
+    /// <summary>
+    /// Production deployment environment
+    /// </summary>
+    public const string ProductionDeploymentEnvironment = "prd";
+
+    /// <summary>
+    /// Production cluster category
+    /// </summary>
+    public const string ProductionClusterCategory = "prod";
 
     // Hardcoded default scopes
 
@@ -66,7 +85,6 @@ public static class ConfigConstants
     /// <summary>
     /// Get Discover endpoint URL based on environment
     /// </summary>
-
     public static string GetDiscoverEndpointUrl(string environment)
     {
         // Check for custom endpoint in environment variable first
@@ -99,4 +117,76 @@ public static string GetAgent365ToolsResourceAppId(string environment)
         _ => McpConstants.Agent365ToolsProdAppId
     };
 }
+
+    /// <summary>
+    /// Get create endpoint URL based on environment
+    /// </summary>
+    public static string GetCreateEndpointUrl(string environment)
+    {
+        // Check for custom endpoint in environment variable first
+        var customEndpoint = Environment.GetEnvironmentVariable($"A365_CREATE_ENDPOINT_{environment?.ToUpper()}");
+        if (!string.IsNullOrEmpty(customEndpoint))
+            return customEndpoint;
+
+        // Default to production endpoint
+        return environment?.ToLower() switch
+        {
+            "prod" => ProductionCreateEndpointUrl,
+            _ => ProductionCreateEndpointUrl
+        };
+    }
+
+    /// <summary>
+    /// Get create endpoint URL based on environment
+    /// </summary>
+    public static string GetDeleteEndpointUrl(string environment)
+    {
+        // Check for custom endpoint in environment variable first
+        var customEndpoint = Environment.GetEnvironmentVariable($"A365_DELETE_ENDPOINT_{environment?.ToUpper()}");
+        if (!string.IsNullOrEmpty(customEndpoint))
+            return customEndpoint;
+
+        // Default to production endpoint
+        return environment?.ToLower() switch
+        {
+            "prod" => ProductionDeleteEndpointUrl,
+            _ => ProductionDeleteEndpointUrl
+        };
+    }
+
+    /// <summary>
+    /// Get deployment environment based on environment
+    /// </summary>
+    public static string GetDeploymentEnvironment(string environment)
+    {
+        // Check for custom deployment environment in environment variable first
+        var customDeploymentEnvironment = Environment.GetEnvironmentVariable($"A365_DEPLOYMENT_ENVIRONMENT_{environment?.ToUpper()}");
+        if (!string.IsNullOrEmpty(customDeploymentEnvironment))
+            return customDeploymentEnvironment;
+
+        // Default to production deployment environment
+        return environment?.ToLower() switch
+        {
+            "prod" => ProductionDeploymentEnvironment,
+            _ => ProductionDeploymentEnvironment
+        };
+    }
+
+    /// <summary>
+    /// Get cluster category based on environment
+    /// </summary>
+    public static string GetClusterCategory(string environment)
+    {
+        // Check for custom cluster category in environment variable first
+        var customClusterCategory = Environment.GetEnvironmentVariable($"A365_CLUSTER_CATEGORY_{environment?.ToUpper()}");
+        if (!string.IsNullOrEmpty(customClusterCategory))
+            return customClusterCategory;
+
+        // Default to production cluster category
+        return environment?.ToLower() switch
+        {
+            "prod" => ProductionClusterCategory,
+            _ => ProductionClusterCategory
+        };
+    }
 }
