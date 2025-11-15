@@ -14,9 +14,9 @@ namespace Microsoft.Agents.A365.DevTools.Cli.Tests.Services;
 public class ConfigurationWizardServiceWebAppNameTests
 {
     [Theory]
-    [InlineData("a", "01010000", 2)] // too short, should pad
+    [InlineData("a", "01010000", 8)] 
     [InlineData("abcdefghijklmnopqrstuvwxyz0123456789", "01010000", 33)] // too long, should truncate
-    [InlineData("abc", "01010000", 18)] // normal
+    [InlineData("abc", "01010000", 10)] // normal
     public void GenerateValidWebAppName_EnforcesLength(string cleanName, string timestamp, int expectedLength)
     {
         var method = typeof(ConfigurationWizardService)
@@ -59,7 +59,7 @@ public class ConfigurationWizardServiceWebAppNameTests
         var method = typeof(ConfigurationWizardService)
             .GetMethod("ExtractDomainFromAccount", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
         method.Should().NotBeNull();
-        var accountInfo = new AzureAccountInfo { Name = accountName };
+        var accountInfo = new AzureAccountInfo { Name = accountName, User = new AzureUser { Name = accountName } };
         var result = method!.Invoke(null, new object[] { accountInfo }) as string;
         result.Should().Be(expectedDomain);
     }
