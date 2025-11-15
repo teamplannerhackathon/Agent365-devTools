@@ -17,7 +17,7 @@ namespace Microsoft.Agents.A365.DevTools.Cli.Commands;
 public class CreateInstanceCommand
 {
     public static Command CreateCommand(ILogger<CreateInstanceCommand> logger, IConfigService configService, CommandExecutor executor,
-        BotConfigurator botConfigurator, GraphApiService graphApiService, IAzureValidator azureValidator)
+        IBotConfigurator botConfigurator, GraphApiService graphApiService, IAzureValidator azureValidator)
     {
         var command = new Command("create-instance", "Create and configure agent user identities with appropriate\nlicenses and notification settings for your deployed agent");
 

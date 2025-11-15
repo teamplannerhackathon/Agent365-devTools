@@ -14,7 +14,7 @@ public class CleanupCommand
     public static Command CreateCommand(
         ILogger<CleanupCommand> logger,
         IConfigService configService,
-        BotConfigurator botConfigurator,
+        IBotConfigurator botConfigurator,
         CommandExecutor executor)
     {
         var cleanupCommand = new Command("cleanup", "Clean up ALL resources (blueprint, instance, Azure) - use subcommands for granular cleanup");
@@ -119,7 +119,7 @@ public class CleanupCommand
     private static Command CreateAzureCleanupCommand(
         ILogger<CleanupCommand> logger,
         IConfigService configService,
-        BotConfigurator botConfigurator,
+        IBotConfigurator botConfigurator,
         CommandExecutor executor)
     {
         var command = new Command("azure", "Remove Azure resources (App Service, App Service Plan)");
@@ -336,7 +336,7 @@ public class CleanupCommand
     private static async Task ExecuteAllCleanupAsync(
         ILogger<CleanupCommand> logger,
         IConfigService configService,
-        BotConfigurator botConfigurator,
+        IBotConfigurator botConfigurator,
         CommandExecutor executor,
         FileInfo? configFile)
     {

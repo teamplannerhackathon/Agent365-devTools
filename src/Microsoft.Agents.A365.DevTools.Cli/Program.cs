@@ -72,7 +72,7 @@ class Program
 
             // Get services needed by commands
             var deploymentService = serviceProvider.GetRequiredService<DeploymentService>();
-            var botConfigurator = serviceProvider.GetRequiredService<BotConfigurator>();
+            var botConfigurator = serviceProvider.GetRequiredService<IBotConfigurator>();
             var graphApiService = serviceProvider.GetRequiredService<GraphApiService>();
             var webAppCreator = serviceProvider.GetRequiredService<AzureWebAppCreator>();
             var platformDetector = serviceProvider.GetRequiredService<PlatformDetector>();
@@ -213,7 +213,7 @@ class Program
         services.AddSingleton<DeploymentService>();
         
         // Add other services
-        services.AddSingleton<BotConfigurator>();
+        services.AddSingleton<IBotConfigurator, BotConfigurator>();
         services.AddSingleton<GraphApiService>();
         services.AddSingleton<DelegatedConsentService>(); // For AgentApplication.Create permission
         

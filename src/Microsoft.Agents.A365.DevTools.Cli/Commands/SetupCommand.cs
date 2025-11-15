@@ -25,7 +25,7 @@ public class SetupCommand
         IConfigService configService,
         CommandExecutor executor,
         DeploymentService deploymentService, // still injected for future use, not used here
-        BotConfigurator botConfigurator,
+        IBotConfigurator botConfigurator,
         IAzureValidator azureValidator,
         AzureWebAppCreator webAppCreator,
         PlatformDetector platformDetector)
@@ -331,7 +331,7 @@ public class SetupCommand
     private static async Task RegisterBlueprintMessagingEndpointAsync(
         Agent365Config setupConfig,
         ILogger<SetupCommand> logger,
-        BotConfigurator botConfigurator)
+        IBotConfigurator botConfigurator)
     {
         // Validate required configuration
         if (string.IsNullOrEmpty(setupConfig.AgentBlueprintId))

@@ -28,12 +28,12 @@ public static class ConfigConstants
     /// </summary>
     public const string ProductionDiscoverEndpointUrl = "https://agent365.svc.cloud.microsoft/agents/discoverToolServers";
 
-      /// <summary>
+    /// <summary>
     /// Production Agent 365 Tools Create endpoint URL
     /// </summary>
     public const string ProductionCreateEndpointUrl = "https://agent365.svc.cloud.microsoft/agents/botManagement/createAgentBlueprint";
 
-      /// <summary>
+    /// <summary>
     /// Production Agent 365 Tools Delete endpoint URL
     /// </summary>
     public const string ProductionDeleteEndpointUrl = "https://agent365.svc.cloud.microsoft/agents/botManagement/deleteAgentBlueprint";
@@ -137,7 +137,7 @@ public static string GetAgent365ToolsResourceAppId(string environment)
     }
 
     /// <summary>
-    /// Get create endpoint URL based on environment
+    /// Get delete endpoint URL based on environment
     /// </summary>
     public static string GetDeleteEndpointUrl(string environment)
     {

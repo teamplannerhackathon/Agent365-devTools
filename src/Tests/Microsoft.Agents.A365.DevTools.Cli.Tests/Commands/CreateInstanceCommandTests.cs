@@ -19,7 +19,7 @@ public class CreateInstanceCommandTests
     private readonly ILogger<CreateInstanceCommand> _mockLogger;
     private readonly ConfigService _mockConfigService;
     private readonly CommandExecutor _mockExecutor;
-    private readonly BotConfigurator _mockBotConfigurator;
+    private readonly IBotConfigurator _mockBotConfigurator;
     private readonly GraphApiService _mockGraphApiService;
     private readonly IAzureValidator _mockAzureValidator;
 
@@ -30,7 +30,9 @@ public class CreateInstanceCommandTests
         // Use NullLogger instead of console logger to avoid I/O bottleneck
         _mockConfigService = Substitute.ForPartsOf<ConfigService>(NullLogger<ConfigService>.Instance);
         _mockExecutor = Substitute.ForPartsOf<CommandExecutor>(NullLogger<CommandExecutor>.Instance);
-        _mockBotConfigurator = Substitute.ForPartsOf<BotConfigurator>(NullLogger<BotConfigurator>.Instance, _mockExecutor);
+        var mockAuthLogger = Substitute.For<ILogger<AuthenticationService>>();
+        var mockAuthService = Substitute.ForPartsOf<AuthenticationService>(mockAuthLogger);
+        _mockBotConfigurator = Substitute.For<IBotConfigurator>();
         _mockGraphApiService = Substitute.ForPartsOf<GraphApiService>(NullLogger<GraphApiService>.Instance, _mockExecutor);
         
         _mockAzureValidator = Substitute.For<IAzureValidator>();

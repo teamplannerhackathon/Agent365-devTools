@@ -1,35 +1,33 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
+using Microsoft.Agents.A365.DevTools.Cli.Constants;
+using Microsoft.Extensions.Logging;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Microsoft.Agents.A365.DevTools.Cli.Constants;
-using Microsoft.Extensions.Logging;
-using Microsoft.Graph.IdentityGovernance.LifecycleWorkflows.DeletedItems.Workflows.Item.Runs.Item.TaskProcessingResults.Item.MicrosoftGraphIdentityGovernanceResume;
+using System.Text.Json.Serialization;
 
 namespace Microsoft.Agents.A365.DevTools.Cli.Services;
 
 /// <summary>
 /// Service for configuring Azure Bot resources
 /// </summary>
-public class BotConfigurator
+public class BotConfigurator : IBotConfigurator
 {
-    private readonly ILogger<BotConfigurator> _logger;
+    private readonly ILogger<IBotConfigurator> _logger;
     private readonly CommandExecutor _executor;
-    private readonly HttpClient _httpClient;
 
     private readonly IConfigService _configService;
     private readonly AuthenticationService _authService;
 
-    public BotConfigurator(ILogger<BotConfigurator> logger, CommandExecutor executor, IConfigService configService, AuthenticationService authService)
+    public BotConfigurator(ILogger<IBotConfigurator> logger, CommandExecutor executor, IConfigService configService, AuthenticationService authService)
     {
         _logger = logger;
         _executor = executor;
         _configService = configService ?? throw new ArgumentNullException(nameof(configService));
-        _authService = authService ?? throw new ArgumentNullException(nameof(authService))  ;
-        _httpClient = new HttpClient();
+        _authService = authService ?? throw new ArgumentNullException(nameof(authService));
     }
 
     /// <summary>
@@ -56,7 +54,7 @@ public class BotConfigurator
                 _logger.LogError("Failed to execute account show command - null result");
                 return false;
             }
-            
+
             if (!subscriptionResult.Success)
             {
                 _logger.LogError("Failed to get subscription information for endpoint creation");
@@ -77,7 +75,7 @@ public class BotConfigurator
 
             try
             {
-                var config = _configService.LoadAsync().Result;
+                var config = await _configService.LoadAsync();
                 var createEndpointUrl = ConfigConstants.GetCreateEndpointUrl(config.Environment);
 
                 _logger.LogInformation("Calling create endpoint directly...");
@@ -85,14 +83,14 @@ public class BotConfigurator
                 // Get authentication token interactively (unless skip-auth is specified)
                 string? authToken = null;
                 _logger.LogInformation("Getting authentication token...");
-                    
+
                 // Determine the audience (App ID) based on the environment
                 var audience = ConfigConstants.GetAgent365ToolsResourceAppId(config.Environment);
                 authToken = await _authService.GetAccessTokenAsync(audience);
 
                 if (string.IsNullOrWhiteSpace(authToken))
                 {
-                _logger.LogError("Failed to acquire authentication token");
+                    _logger.LogError("Failed to acquire authentication token");
                     return false;
                 }
                 _logger.LogInformation("Successfully acquired access token");
@@ -167,7 +165,7 @@ public class BotConfigurator
                 _logger.LogError("Failed to execute account show command - null result");
                 return false;
             }
-            
+
             if (!subscriptionResult.Success)
             {
                 _logger.LogError("Failed to get subscription information for endpoint creation");
@@ -188,7 +186,7 @@ public class BotConfigurator
 
             try
             {
-                var config = _configService.LoadAsync().Result;
+                var config = await _configService.LoadAsync();
                 var deleteEndpointUrl = ConfigConstants.GetDeleteEndpointUrl(config.Environment);
 
                 _logger.LogInformation("Calling delete endpoint directly...");
@@ -198,17 +196,17 @@ public class BotConfigurator
                 // Get authentication token interactively (unless skip-auth is specified)
                 string? authToken = null;
                 _logger.LogInformation("Getting authentication token...");
-                    
+
                 // Determine the audience (App ID) based on the environment
                 var audience = ConfigConstants.GetAgent365ToolsResourceAppId(config.Environment);
-                    
-                 _logger.LogInformation("Environment: {Environment}, Audience: {Audience}", config.Environment, audience);
+
+                _logger.LogInformation("Environment: {Environment}, Audience: {Audience}", config.Environment, audience);
 
                 authToken = await _authService.GetAccessTokenAsync(audience);
 
                 if (string.IsNullOrWhiteSpace(authToken))
                 {
-                _logger.LogError("Failed to acquire authentication token");
+                    _logger.LogError("Failed to acquire authentication token");
                     return false;
                 }
                 _logger.LogInformation("Successfully acquired access token");
@@ -226,10 +224,12 @@ public class BotConfigurator
                 using var httpClient = Services.Internal.HttpClientFactory.CreateAuthenticatedClient(authToken);
 
                 // Call the endpoint
-                _logger.LogInformation("Making POST request to: {RequestUrl}", deleteEndpointUrl);
+                _logger.LogInformation("Making request to delete endpoint.");
 
-                var response = await httpClient.PostAsync(deleteEndpointUrl,
-                 new StringContent(createEndpointBody.ToJsonString(), System.Text.Encoding.UTF8, "application/json"));
+                var request = new HttpRequestMessage(HttpMethod.Delete, deleteEndpointUrl);
+                request.Content = new StringContent(createEndpointBody.ToJsonString(), System.Text.Encoding.UTF8, "application/json");
+                var response = await httpClient.SendAsync(request);
+
 
                 if (!response.IsSuccessStatusCode)
                 {
