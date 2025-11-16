@@ -119,6 +119,11 @@ public class BotConfigurator : IBotConfigurator
                 {
                     _logger.LogError("Failed to call create endpoint. Status: {Status}", response.StatusCode);
                     var errorContent = await response.Content.ReadAsStringAsync();
+                    if (errorContent.Contains("Failed to provision bot resource via Azure Management API. Status: BadRequest", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _logger.LogError("Please ensure that endpoint registration is enabled in the selected region and that your web app name is unique.");
+                        return false;
+                    }
                     _logger.LogError("Error response: {Error}", errorContent);
                     return false;
                 }
