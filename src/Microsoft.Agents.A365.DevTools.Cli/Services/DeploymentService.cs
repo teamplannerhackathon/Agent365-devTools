@@ -200,8 +200,8 @@ public class DeploymentService
         _logger.LogInformation("Application will be available in 2-5 minutes");
         _logger.LogInformation("");
         _logger.LogInformation("Monitor deployment status:");
-        _logger.LogInformation("  • Web: https://{AppName}.scm.azurewebsites.net/api/deployments/latest", config.AppName);
-        _logger.LogInformation("  • CLI: az webapp log tail --name {AppName} --resource-group {ResourceGroup}", config.AppName, config.ResourceGroup);
+        _logger.LogInformation("    Web: https://{AppName}.scm.azurewebsites.net/api/deployments/latest", config.AppName);
+        _logger.LogInformation("    CLI: az webapp log tail --name {AppName} --resource-group {ResourceGroup}", config.AppName, config.ResourceGroup);
         _logger.LogInformation("");
     }
 

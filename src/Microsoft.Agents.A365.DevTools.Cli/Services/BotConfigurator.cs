@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 using Microsoft.Agents.A365.DevTools.Cli.Constants;
+using Microsoft.Agents.A365.DevTools.Cli.Services.Helpers;
 using Microsoft.Extensions.Logging;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -76,7 +77,7 @@ public class BotConfigurator : IBotConfigurator
             try
             {
                 var config = await _configService.LoadAsync();
-                var createEndpointUrl = ConfigConstants.GetCreateEndpointUrl(config.Environment);
+                var createEndpointUrl = EndpointHelper.GetCreateEndpointUrl(config.Environment);
 
                 _logger.LogInformation("Calling create endpoint directly...");
 
@@ -103,8 +104,8 @@ public class BotConfigurator : IBotConfigurator
                     ["MessagingEndpoint"] = messagingEndpoint,
                     ["Description"] = agentDescription,
                     ["Location"] = location,
-                    ["Environment"] = ConfigConstants.GetDeploymentEnvironment(config.Environment),
-                    ["ClusterCategory"] = ConfigConstants.GetClusterCategory(config.Environment)
+                    ["Environment"] = EndpointHelper.GetDeploymentEnvironment(config.Environment),
+                    ["ClusterCategory"] = EndpointHelper.GetClusterCategory(config.Environment)
                 };
                 // Use helper to create authenticated HTTP client
                 using var httpClient = Services.Internal.HttpClientFactory.CreateAuthenticatedClient(authToken);
@@ -121,7 +122,7 @@ public class BotConfigurator : IBotConfigurator
                     var errorContent = await response.Content.ReadAsStringAsync();
                     if (errorContent.Contains("Failed to provision bot resource via Azure Management API. Status: BadRequest", StringComparison.OrdinalIgnoreCase))
                     {
-                        _logger.LogError("Please ensure that endpoint registration is enabled in the selected region and that your web app name is unique.");
+                        _logger.LogError($"Please ensure that endpoint registration is enabled in the selected region ('{location}') and that your web app name ('{endpointName}') is globally unique.");
                         return false;
                     }
                     _logger.LogError("Error response: {Error}", errorContent);
@@ -192,7 +193,7 @@ public class BotConfigurator : IBotConfigurator
             try
             {
                 var config = await _configService.LoadAsync();
-                var deleteEndpointUrl = ConfigConstants.GetDeleteEndpointUrl(config.Environment);
+                var deleteEndpointUrl = EndpointHelper.GetDeleteEndpointUrl(config.Environment);
 
                 _logger.LogInformation("Calling delete endpoint directly...");
                 _logger.LogInformation("Environment: {Env}", config.Environment);
@@ -222,8 +223,8 @@ public class BotConfigurator : IBotConfigurator
                     ["AppId"] = agentBlueprintId,
                     ["TenantId"] = tenantId,
                     ["Location"] = location,
-                    ["Environment"] = ConfigConstants.GetDeploymentEnvironment(config.Environment),
-                    ["ClusterCategory"] = ConfigConstants.GetClusterCategory(config.Environment)
+                    ["Environment"] = EndpointHelper.GetDeploymentEnvironment(config.Environment),
+                    ["ClusterCategory"] = EndpointHelper.GetClusterCategory(config.Environment)
                 };
                 // Use helper to create authenticated HTTP client
                 using var httpClient = Services.Internal.HttpClientFactory.CreateAuthenticatedClient(authToken);

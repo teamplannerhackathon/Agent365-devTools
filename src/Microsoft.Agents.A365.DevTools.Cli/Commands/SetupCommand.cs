@@ -5,6 +5,7 @@ using Microsoft.Agents.A365.DevTools.Cli.Constants;
 using Microsoft.Agents.A365.DevTools.Cli.Helpers;
 using Microsoft.Agents.A365.DevTools.Cli.Models;
 using Microsoft.Agents.A365.DevTools.Cli.Services;
+using Microsoft.Agents.A365.DevTools.Cli.Services.Helpers;
 using Microsoft.Extensions.Logging;
 using System.CommandLine;
 using System.Text.Json;
@@ -410,9 +411,7 @@ public class SetupCommand
 
         // Generate endpoint name with Azure Bot Service constraints (4-42 chars)
         var baseEndpointName = $"{setupConfig.WebAppName}-endpoint";
-        var endpointName = baseEndpointName.Length > 42
-            ? baseEndpointName.Substring(0, 42)
-            : baseEndpointName;
+        var endpointName = EndpointHelper.GetEndpointName(baseEndpointName);
         if (endpointName.Length < 4)
         {
             logger.LogError("Bot endpoint name '{EndpointName}' is too short (must be at least 4 characters)", endpointName);

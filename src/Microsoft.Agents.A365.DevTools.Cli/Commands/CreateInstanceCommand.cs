@@ -5,6 +5,7 @@ using Microsoft.Agents.A365.DevTools.Cli.Constants;
 using Microsoft.Agents.A365.DevTools.Cli.Helpers;
 using Microsoft.Agents.A365.DevTools.Cli.Models;
 using Microsoft.Agents.A365.DevTools.Cli.Services;
+using Microsoft.Agents.A365.DevTools.Cli.Services.Helpers;
 using Microsoft.Extensions.Logging;
 using System.CommandLine;
 using System.Text.Json;
@@ -176,9 +177,7 @@ public class CreateInstanceCommand
                 string? agenticAppId = instanceConfig.AgenticAppId;
                 string? agenticUserId = instanceConfig.AgenticUserId;
                 var baseEndpointName = $"{instanceConfig.WebAppName}-endpoint";
-                var endpointName = baseEndpointName.Length > 42
-                    ? baseEndpointName.Substring(0, 42)
-                    : baseEndpointName;
+                var endpointName = EndpointHelper.GetEndpointName(baseEndpointName);
 
                 if (File.Exists(agentUserConfigPath))
                 {
