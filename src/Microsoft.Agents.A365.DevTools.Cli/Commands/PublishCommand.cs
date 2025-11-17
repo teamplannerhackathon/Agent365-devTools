@@ -176,7 +176,7 @@ public class PublishCommand
                 logger.LogInformation("");
                 logger.LogInformation("=== CUSTOMIZE YOUR AGENT MANIFEST ===");
                 logger.LogInformation("");
-                logger.LogInformation("Your manifest has been updatedManifest at: {ManifestPath}", manifestPath);
+                logger.LogInformation("Your manifest has been updated at: {ManifestPath}", manifestPath);
                 logger.LogInformation("");
                 logger.LogInformation("Please customize these fields before publishing:");
                 logger.LogInformation("  • Version ('version'): Increment for republishing (e.g., 1.0.0 to 1.0.1)");

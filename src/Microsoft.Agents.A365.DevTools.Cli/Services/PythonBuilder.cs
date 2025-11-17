@@ -146,7 +146,7 @@ public class PythonBuilder : IPlatformBuilder
         }
 
         _logger.LogInformation("Building Python project...");
-        // Run python -m py_compile on all .py files to catch syntax errors before packaging
+        // Run python -m py_compile on all .py files at the project root to catch syntax errors before packaging
         var pyFiles = Directory.GetFiles(projectDir, "*.py", SearchOption.TopDirectoryOnly);
         foreach (var pyFile in pyFiles)
         {
