@@ -29,9 +29,6 @@ public class CleanupCommandTests
         // Default executor behavior for tests: return success for any external command to avoid launching real CLI tools
         _mockExecutor.ExecuteAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(new Microsoft.Agents.A365.DevTools.Cli.Services.CommandResult { ExitCode = 0, StandardOutput = string.Empty, StandardError = string.Empty }));
-        var mockBotLogger = Substitute.For<ILogger<IBotConfigurator>>();
-        var mockAuthLogger = Substitute.For<ILogger<AuthenticationService>>();
-        var mockAuthService = Substitute.ForPartsOf<AuthenticationService>(mockAuthLogger);
         _mockBotConfigurator = Substitute.For<IBotConfigurator>();
     }
 
