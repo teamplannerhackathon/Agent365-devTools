@@ -397,7 +397,7 @@ public class ConfigurationWizardService : IConfigurationWizardService
         if (string.IsNullOrEmpty(defaultLocation))
         {
             // Try to get from resource group or common defaults
-            defaultLocation = "westus"; // Conservative default
+            defaultLocation = "eastus"; // Conservative default
         }
 
         await Task.CompletedTask; // Satisfy async requirement
