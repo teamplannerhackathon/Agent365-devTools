@@ -122,7 +122,7 @@ public class BotConfigurator : IBotConfigurator
                     var errorContent = await response.Content.ReadAsStringAsync();
                     if (errorContent.Contains("Failed to provision bot resource via Azure Management API. Status: BadRequest", StringComparison.OrdinalIgnoreCase))
                     {
-                        _logger.LogError($"Please ensure that endpoint registration is enabled in the selected region ('{location}') and that your web app name ('{endpointName}') is globally unique.");
+                        _logger.LogError("Please ensure that endpoint registration is enabled in the selected region ('{Location}') and that your web app name ('{EndpointName}') is globally unique.", location, endpointName);
                         return false;
                     }
                     _logger.LogError("Error response: {Error}", errorContent);
