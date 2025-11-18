@@ -20,7 +20,6 @@ public class DeployCommand
         DeploymentService deploymentService,
         IAzureValidator azureValidator)
     {
-        // Top-level command name set to 'deploy' so it appears in CLI help as 'deploy'
         var command = new Command("deploy", "Deploy Agent 365 application binaries to the configured Azure App Service and update Agent 365 Tool permissions");
 
         var configOption = new Option<FileInfo>(
@@ -53,8 +52,9 @@ public class DeployCommand
         // Add subcommands
         command.AddCommand(CreateAppSubcommand(logger, configService, executor, deploymentService, azureValidator));
         command.AddCommand(CreateMcpSubcommand(logger, configService, executor));
+        command.AddCommand(CreateScopesSubcommand(logger, configService, executor));
 
-        // Single handler for the deploy command 
+        // Single handler for the deploy command - runs only the application deployment flow
         command.SetHandler(async (config, verbose, dryRun, inspect, restart) =>
         {
             try
@@ -65,31 +65,18 @@ public class DeployCommand
 
                 if (dryRun)
                 {
-                    logger.LogInformation("DRY RUN: Step 1 - Deploy application binaries");
+                    logger.LogInformation("DRY RUN: Deploy application binaries");
                     logger.LogInformation("Target resource group: {ResourceGroup}", configData.ResourceGroup);
                     logger.LogInformation("Target web app: {WebAppName}", configData.WebAppName);
                     logger.LogInformation("Configuration file validated: {ConfigFile}", config.FullName);
-                    logger.LogInformation("");
-                    logger.LogInformation("DRY RUN: Step 2 - Deploy/update Agent 365 Tool permissions");
-                    logger.LogInformation("Update MCP OAuth2 permission grants and inheritable permissions");
-                    logger.LogInformation("Consent to required scopes for the agent identity");
                     return;
                 }
 
-                // Step 1: Deploy application binaries
-                logger.LogInformation("Step 1: Start deploying application binaries...");
-                
                 var validatedConfig = await ValidateDeploymentPrerequisitesAsync(
                     config.FullName, configService, azureValidator, executor, logger);
                 if (validatedConfig == null) return;
 
-                var appDeploySuccess = await DeployApplicationAsync(
-                    validatedConfig, deploymentService, verbose, inspect, restart, logger);
-                if (!appDeploySuccess) return;
-
-                // Step 2: Deploy MCP Tool Permissions
-                logger.LogInformation("Step 2: Start deploying Agent 365 Tool Permissions...");
-                await DeployMcpToolPermissionsAsync(validatedConfig, executor, logger);
+                await DeployApplicationAsync(validatedConfig, deploymentService, verbose, inspect, restart, logger);
             }
             catch (Exception ex)
             {
@@ -194,33 +181,185 @@ public class DeployCommand
 
         command.SetHandler(async (config, verbose, dryRun) =>
         {
-            if (dryRun)
-            {
-                logger.LogInformation("DRY RUN: Deploy/update Agent 365 Tool Permissions");
-                logger.LogInformation("This would execute the following operations:");
-                logger.LogInformation("  1. Update MCP OAuth2 permission grants and inheritable permissions");
-                logger.LogInformation("  2. Consent to required scopes for the agent identity");
-                logger.LogInformation("No actual changes will be made.");
-                return;
-            }
-
-            logger.LogInformation("Starting deploy Microsoft Agent 365 Tool Permissions...");
-            logger.LogInformation(""); // Empty line for readability
-
             try
             {
+                if (dryRun)
+                {
+                    logger.LogInformation("DRY RUN: Deploy/update Agent 365 Tool Permissions");
+                    logger.LogInformation("This would execute the following operations:");
+                    logger.LogInformation("  1. Update MCP OAuth2 permission grants and inheritable permissions");
+                    logger.LogInformation("  2. Consent to required scopes for the agent identity");
+                    logger.LogInformation("No actual changes will be made.");
+                    return;
+                }
+
+                logger.LogInformation("Starting deploy Microsoft Agent 365 Tool Permissions...");
+                logger.LogInformation(""); // Empty line for readability
+
                 // Load configuration from specified file
                 var updateConfig = await configService.LoadAsync(config.FullName);
                 if (updateConfig == null) Environment.Exit(1);
 
                 await DeployMcpToolPermissionsAsync(updateConfig, executor, logger);
             }
+            catch (DeployMcpException)
+            {
+                throw;
+            }
             catch (Exception ex)
             {
                 logger.LogError(ex, "Microsoft Agent 365 Tool Permissions deploy/update failed: {Message}", ex.Message);
-                throw;
+                throw new DeployMcpException(ex.Message, ex);
             }
         }, configOption, verboseOption, dryRunOption);
+
+        return command;
+    }
+
+    private static Command CreateScopesSubcommand(
+        ILogger<DeployCommand> logger,
+        IConfigService configService,
+        CommandExecutor executor)
+    {
+        var command = new Command("scopes", "Grant or update OAuth2 scopes for a specific resource app ID on the agent blueprint");
+
+        var configOption = new Option<FileInfo>(
+            new[] { "--config", "-c" },
+            getDefaultValue: () => new FileInfo("a365.config.json"),
+            description: "Path to the configuration file (default: a365.config.json)");
+
+        var resourceAppIdOption = new Option<string>(
+            new[] { "--resource-app-id", "-r" },
+            description: "Resource App ID (required)")
+        { IsRequired = true };
+
+        var scopesOption = new Option<string[]>(
+            new[] { "--scopes", "-s" },
+            description: "Comma-separated list of scopes (required)")
+        {
+            IsRequired = true,
+            AllowMultipleArgumentsPerToken = true
+        };
+
+        var tenantIdOption = new Option<string?>(
+            new[] { "--tenant-id", "-t" },
+            description: "Tenant ID (overrides config)");
+
+        var blueprintAppIdOption = new Option<string?>(
+            new[] { "--blueprint-app-id", "-b" },
+            description: "Agent Blueprint App ID (overrides config)");
+
+        var verboseOption = new Option<bool>(
+            new[] { "--verbose", "-v" },
+            description: "Enable verbose logging");
+
+        var dryRunOption = new Option<bool>(
+            "--dry-run",
+            description: "Show what would be done without executing");
+
+        command.AddOption(configOption);
+        command.AddOption(resourceAppIdOption);
+        command.AddOption(scopesOption);
+        command.AddOption(tenantIdOption);
+        command.AddOption(blueprintAppIdOption);
+        command.AddOption(verboseOption);
+        command.AddOption(dryRunOption);
+
+        command.SetHandler(async (FileInfo configFile, string resourceAppId, string[] scopes, string? tenantId, string? blueprintAppId, bool verbose, bool dryRun) =>
+        {
+            try
+            {
+                // Load config for defaults
+                var config = await configService.LoadAsync(configFile.FullName);
+                if (config == null)
+                {
+                    logger.LogError("Failed to load configuration from {ConfigFile}", configFile.FullName);
+                    return;
+                }
+
+                var effectiveTenantId = !string.IsNullOrWhiteSpace(tenantId) ? tenantId : config.TenantId;
+                var effectiveBlueprintAppId = !string.IsNullOrWhiteSpace(blueprintAppId) ? blueprintAppId : config.AgentBlueprintId;
+
+                if (string.IsNullOrWhiteSpace(effectiveTenantId))
+                {
+                    throw new DeployScopesException("Tenant ID is required (not found in config or command line)");
+                }
+                if (string.IsNullOrWhiteSpace(effectiveBlueprintAppId))
+                {
+                    throw new DeployScopesException("Agent Blueprint App ID is required (not found in config or command line)");
+                }
+                if (string.IsNullOrWhiteSpace(resourceAppId))
+                {
+                    throw new DeployScopesException("Resource App ID is required");
+                }
+                if (scopes == null || scopes.Length == 0)
+                {
+                    throw new DeployScopesException("At least one scope is required");
+                }
+
+                if (dryRun)
+                {
+                    logger.LogInformation("DRY RUN: Would grant scopes [{Scopes}] to resource app {ResourceAppId} for blueprint {BlueprintAppId} in tenant {TenantId}",
+                        string.Join(", ", scopes), resourceAppId, effectiveBlueprintAppId, effectiveTenantId);
+                    return;
+                }
+
+                logger.LogInformation("Granting scopes [{Scopes}] to resource app {ResourceAppId} for blueprint {BlueprintAppId} in tenant {TenantId}",
+                    string.Join(", ", scopes), resourceAppId, effectiveBlueprintAppId, effectiveTenantId);
+
+                var graphService = new GraphApiService(
+                    LoggerFactory.Create(builder => builder.AddConsole()).CreateLogger<GraphApiService>(),
+                    executor);
+
+                // Lookup service principal object IDs
+                var blueprintSpObjectId = await graphService.LookupServicePrincipalByAppIdAsync(effectiveTenantId, effectiveBlueprintAppId)
+                    ?? throw new DeployScopesException("Blueprint Service Principal not found for appId " + effectiveBlueprintAppId);
+
+                var resourceSpObjectId = await graphService.LookupServicePrincipalByAppIdAsync(effectiveTenantId, resourceAppId)
+                    ?? throw new DeployScopesException("Resource Service Principal not found for appId " + resourceAppId);
+
+                // Use create-or-update semantics to merge scopes when possible (matches PowerShell behavior)
+                var ok = await graphService.CreateOrUpdateOauth2PermissionGrantAsync(
+                    effectiveTenantId, blueprintSpObjectId, resourceSpObjectId, scopes);
+
+                if (!ok)
+                    throw new DeployScopesException("Failed to update oauth2PermissionGrant.");
+
+                // Also attempt to set inheritable permissions on the blueprint so delegated permissions
+                // are available to resource apps that support inheritance (same behavior as deploy mcp)
+                var (permOk, alreadyExists, permErr) = await graphService.SetInheritablePermissionsAsync(
+                    effectiveTenantId, effectiveBlueprintAppId, resourceAppId, scopes);
+
+                if (!permOk && !alreadyExists)
+                {
+                    // Record error on config for diagnostics and surface structured exception
+                    config.InheritanceConfigured = false;
+                    config.InheritanceConfigError = permErr;
+                    throw new DeployScopesException("Failed to set inheritable permissions: " + permErr);
+                }
+
+                // Update config state to reflect success/exists
+                config.InheritanceConfigured = true;
+                config.InheritablePermissionsAlreadyExist = alreadyExists;
+                config.InheritanceConfigError = null;
+
+                logger.LogInformation("   - Inheritable permissions completed: blueprint {Blueprint} to resourceAppId {ResourceAppId} scopes [{Scopes}]",
+                    effectiveBlueprintAppId, resourceAppId, string.Join(' ', scopes));
+
+                logger.LogInformation("Successfully granted scopes [{Scopes}] to resource app {ResourceAppId}", string.Join(", ", scopes), resourceAppId);
+            }
+            catch (DeployScopesException)
+            {
+                // Re-throw known structured exceptions so global handlers can format them
+                throw;
+            }
+            catch (Exception ex)
+            {
+                // Wrap unexpected exceptions to avoid leaking stack traces to users
+                throw new DeployScopesException(ex.Message, ex);
+            }
+        },
+        configOption, resourceAppIdOption, scopesOption, tenantIdOption, blueprintAppIdOption, verboseOption, dryRunOption);
 
         return command;
     }
