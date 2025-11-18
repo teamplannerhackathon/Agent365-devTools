@@ -111,7 +111,7 @@ class Program
                 {
                     if (exception is Agent365Exception myEx)
                     {
-                        HandleAgent365Exception(myEx);
+                        ExceptionHandler.HandleAgent365Exception(myEx);
                         context.ExitCode = myEx.ExitCode;
                     }
                     else
@@ -133,28 +133,6 @@ class Program
         {
             Log.CloseAndFlush();
         }
-    }
-
-
-    /// <summary>
-    /// Handles Agent365Exception with user-friendly output (no stack traces for user errors).
-    /// Follows Microsoft CLI best practices (Azure CLI, dotnet CLI patterns).
-    /// </summary>
-    private static void HandleAgent365Exception(Agent365Exception ex)
-    {
-        // Display formatted error message
-        Console.Error.WriteLine(ex.GetFormattedMessage());
-
-        // For system errors (not user errors), suggest reporting as bug
-        if (!ex.IsUserError)
-        {
-            Console.Error.WriteLine("If this error persists, please report it at:");
-            Console.Error.WriteLine("https://github.com/microsoft/Agent365-devTools/issues");
-        }
-
-        // Log for diagnostics (but don't show stack trace to user)
-        Log.Error("Operation failed. ErrorCode={ErrorCode}, IssueDescription={IssueDescription}",
-            ex.ErrorCode, ex.IssueDescription);
     }
 
     private static void ConfigureServices(IServiceCollection services)
