@@ -118,29 +118,29 @@ public class DeploymentService
             await manifest.WriteToFileAsync(manifestPath);
             _logger.LogInformation("Manifest command: {Command}", manifest.Command);
 
-            // 6. Convert .env to Azure App Settings (for Python projects)
+            // 6. Convert .env to Azure App Settings (if it exists)
+            _logger.LogInformation("[4/7] Converting .env to Azure App Settings...");
+            var envResult = await builder.ConvertEnvToAzureAppSettingsAsync(projectDir, config.ResourceGroup, config.AppName, verbose);
+            if (!envResult)
+            {
+                _logger.LogWarning("Failed to convert environment variables, but continuing with deployment");
+            }
+
+            // 7. Set startup command for Python apps
             if (platform == ProjectPlatform.Python && builder is PythonBuilder pythonBuilder)
             {
-                _logger.LogInformation("[4/7] Converting .env to Azure App Settings...");
-                var envResult = await pythonBuilder.ConvertEnvToAzureAppSettingsAsync(projectDir, config.ResourceGroup, config.AppName, verbose);
-                if (!envResult)
-                {
-                    _logger.LogWarning("Failed to convert environment variables, but continuing with deployment");
-                }
-
-                // Set startup command for Python apps
                 _logger.LogInformation("[6/7] Setting Python startup command...");
                 var startupResult = await pythonBuilder.SetStartupCommandAsync(projectDir, config.ResourceGroup, config.AppName, verbose);
                 if (!startupResult)
                 {
                     _logger.LogWarning("Failed to set startup command, but continuing with deployment");
                 }
-
-                // Add delay to allow Azure configuration to stabilize before deployment
-                // This prevents "SCM container restart" conflicts
-                _logger.LogInformation("Waiting for Azure configuration to stabilize...");
-                await Task.Delay(TimeSpan.FromSeconds(5));
             }
+
+            // Add delay to allow Azure configuration to stabilize before deployment
+            // This prevents "SCM container restart" conflicts
+            _logger.LogInformation("Waiting for Azure configuration to stabilize...");
+            await Task.Delay(TimeSpan.FromSeconds(5));
 
             await builder.CleanAsync(publishPath);
         }

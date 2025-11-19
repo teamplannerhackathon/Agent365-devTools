@@ -3,6 +3,7 @@
 
 using System.Text.Json;
 using Microsoft.Agents.A365.DevTools.Cli.Models;
+using Microsoft.Agents.A365.DevTools.Cli.Services.Helpers;
 using Microsoft.Extensions.Logging;
 
 namespace Microsoft.Agents.A365.DevTools.Cli.Services;
@@ -14,11 +15,13 @@ public class NodeBuilder : IPlatformBuilder
 {
     private readonly ILogger<NodeBuilder> _logger;
     private readonly CommandExecutor _executor;
+    private readonly BuilderHelper _helper;
 
     public NodeBuilder(ILogger<NodeBuilder> logger, CommandExecutor executor)
     {
         _logger = logger;
         _executor = executor;
+        _helper = new BuilderHelper(logger, executor);
     }
 
     public async Task<bool> ValidateEnvironmentAsync()
@@ -62,7 +65,15 @@ public class NodeBuilder : IPlatformBuilder
     public async Task<string> BuildAsync(string projectDir, string outputPath, bool verbose)
     {
         _logger.LogInformation("Building Node.js project...");
-        
+
+        // Clean up old publish directory for fresh start
+        var publishPath = Path.Combine(projectDir, outputPath);
+        if (Directory.Exists(publishPath))
+        {
+            _logger.LogInformation("Removing old publish directory...");
+            Directory.Delete(publishPath, recursive: true);
+        }
+
         var packageJsonPath = Path.Combine(projectDir, "package.json");
         if (!File.Exists(packageJsonPath))
         {
@@ -71,11 +82,11 @@ public class NodeBuilder : IPlatformBuilder
 
         // Install dependencies
         _logger.LogInformation("Installing dependencies...");
-        var installResult = await ExecuteWithOutputAsync("npm", "ci", projectDir, verbose);
+        var installResult = await _helper.ExecuteWithOutputAsync("npm", "ci", projectDir, verbose);
         if (!installResult.Success)
         {
             _logger.LogWarning("npm ci failed, trying npm install...");
-            installResult = await ExecuteWithOutputAsync("npm", "install", projectDir, verbose);
+            installResult = await _helper.ExecuteWithOutputAsync("npm", "install", projectDir, verbose);
             if (!installResult.Success)
             {
                 throw new Exception($"npm install failed: {installResult.StandardError}");
@@ -89,7 +100,7 @@ public class NodeBuilder : IPlatformBuilder
         if (hasBuildScript)
         {
             _logger.LogInformation("Running build script...");
-            var buildResult = await ExecuteWithOutputAsync("npm", "run build", projectDir, verbose);
+            var buildResult = await _helper.ExecuteWithOutputAsync("npm", "run build", projectDir, verbose);
             if (!buildResult.Success)
             {
                 throw new Exception($"npm run build failed: {buildResult.StandardError}");
@@ -100,17 +111,11 @@ public class NodeBuilder : IPlatformBuilder
             _logger.LogInformation("No build script found, skipping build step");
         }
 
-        // Prepare publish directory
-        var publishPath = Path.Combine(projectDir, outputPath);
-        if (Directory.Exists(publishPath))
-        {
-            Directory.Delete(publishPath, recursive: true);
-        }
         Directory.CreateDirectory(publishPath);
 
         // Copy necessary files to publish directory
         _logger.LogInformation("Preparing deployment package...");
-        
+
         // Copy package.json and package-lock.json
         File.Copy(packageJsonPath, Path.Combine(publishPath, "package.json"));
         var packageLockPath = Path.Combine(projectDir, "package-lock.json");
@@ -220,6 +225,11 @@ public class NodeBuilder : IPlatformBuilder
             BuildRequired = true,
         };
     }
+    
+    public async Task<bool> ConvertEnvToAzureAppSettingsAsync(string projectDir, string resourceGroup, string webAppName, bool verbose)
+    {
+        return await _helper.ConvertEnvToAzureAppSettingsIfExistsAsync(projectDir, resourceGroup, webAppName, verbose);
+    }
 
     private async Task CreateDeploymentFile(string publishPath)
     {
@@ -245,24 +255,5 @@ public class NodeBuilder : IPlatformBuilder
             var destSubDir = Path.Combine(destDir, Path.GetFileName(dir));
             CopyDirectory(dir, destSubDir);
         }
-    }
-
-    private async Task<CommandResult> ExecuteWithOutputAsync(string command, string arguments, string workingDirectory, bool verbose)
-    {
-        var result = await _executor.ExecuteAsync(command, arguments, workingDirectory);
-        
-        if (verbose || !result.Success)
-        {
-            if (!string.IsNullOrWhiteSpace(result.StandardOutput))
-            {
-                _logger.LogInformation("Output:\n{Output}", result.StandardOutput);
-            }
-            if (!string.IsNullOrWhiteSpace(result.StandardError))
-            {
-                _logger.LogWarning("Warnings/Errors:\n{Error}", result.StandardError);
-            }
-        }
-        
-        return result;
     }
 }

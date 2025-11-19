@@ -29,4 +29,6 @@ public interface IPlatformBuilder
     /// Create Oryx manifest for the platform
     /// </summary>
     Task<OryxManifest> CreateManifestAsync(string projectDir, string publishPath);
+
+    Task<bool> ConvertEnvToAzureAppSettingsAsync(string projectDir, string resourceGroup, string webAppName, bool verbose);
 }
