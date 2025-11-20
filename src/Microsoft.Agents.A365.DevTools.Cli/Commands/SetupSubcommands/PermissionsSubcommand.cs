@@ -6,6 +6,7 @@ using Microsoft.Agents.A365.DevTools.Cli.Helpers;
 using Microsoft.Agents.A365.DevTools.Cli.Services;
 using Microsoft.Extensions.Logging;
 using System.CommandLine;
+using System.Threading;
 
 namespace Microsoft.Agents.A365.DevTools.Cli.Commands.SetupSubcommands;
 
@@ -22,9 +23,7 @@ internal static class PermissionsSubcommand
     {
         var permissionsCommand = new Command("permissions", 
             "Configure OAuth2 permission grants and inheritable permissions\n" +
-            "Minimum required permissions: Global Administrator\n" +
-            "Prerequisites: Blueprint must exist (run 'a365 setup blueprint' first)\n" +
-            "Subcommands should be run in order: mcp, then bot\n");
+            "Minimum required permissions: Global Administrator\n");
 
         // Add subcommands
         permissionsCommand.AddCommand(CreateMcpSubcommand(logger, configService, executor));
@@ -74,12 +73,12 @@ internal static class PermissionsSubcommand
                 Environment.Exit(1);
             }
 
-            // Read scopes from toolingManifest.json
-            var manifestPath = Path.Combine(setupConfig.DeploymentProjectPath ?? string.Empty, "toolingManifest.json");
-            var toolingScopes = await ManifestHelper.GetRequiredScopesAsync(manifestPath);
-
             if (dryRun)
             {
+                // Read scopes from toolingManifest.json
+                var manifestPath = Path.Combine(setupConfig.DeploymentProjectPath ?? string.Empty, "toolingManifest.json");
+                var toolingScopes = await ManifestHelper.GetRequiredScopesAsync(manifestPath);
+
                 logger.LogInformation("DRY RUN: Configure MCP Permissions");
                 logger.LogInformation("Would configure OAuth2 grants and inheritable permissions:");
                 logger.LogInformation("  - Blueprint: {BlueprintId}", setupConfig.AgentBlueprintId);
@@ -88,33 +87,13 @@ internal static class PermissionsSubcommand
                 return;
             }
 
-            logger.LogInformation("Configuring MCP server permissions...");
-            logger.LogInformation("");
+            await ConfigureMcpPermissionsAsync(
+                config.FullName,
+                logger,
+                configService,
+                executor,
+                setupConfig);
 
-            var graphService = new GraphApiService(
-                LoggerFactory.Create(builder => builder.AddConsole()).CreateLogger<GraphApiService>(),
-                executor);
-
-            try
-            {
-                // OAuth2 permission grants
-                await SetupHelpers.EnsureMcpOauth2PermissionGrantsAsync(
-                    graphService, setupConfig, toolingScopes, logger);
-
-                // Inheritable permissions
-                await SetupHelpers.EnsureMcpInheritablePermissionsAsync(
-                    graphService, setupConfig, toolingScopes, logger);
-
-                logger.LogInformation("");
-                logger.LogInformation("MCP server permissions configured successfully");
-                logger.LogInformation("");
-                logger.LogInformation("Next step: Run 'a365 setup permissions bot' to configure Bot API permissions");
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Failed to configure MCP permissions: {Message}", ex.Message);
-                Environment.Exit(1);
-            }
         }, configOption, verboseOption, dryRunOption);
 
         return command;
@@ -170,59 +149,142 @@ internal static class PermissionsSubcommand
                 return;
             }
 
-            logger.LogInformation("Configuring Messaging Bot API permissions...");
-            logger.LogInformation("");
+            await ConfigureBotPermissionsAsync(
+                config.FullName,
+                logger,
+                configService,
+                executor,
+                setupConfig);
 
-            var graphService = new GraphApiService(
-                LoggerFactory.Create(builder => builder.AddConsole()).CreateLogger<GraphApiService>(),
-                executor);
-
-            try
-            {
-                var blueprintSpObjectId = await graphService.LookupServicePrincipalByAppIdAsync(setupConfig.TenantId, setupConfig.AgentBlueprintId)
-                    ?? throw new InvalidOperationException($"Blueprint Service Principal not found for appId {setupConfig.AgentBlueprintId}");
-
-                // Ensure Messaging Bot API SP exists
-                var botApiResourceSpObjectId = await graphService.EnsureServicePrincipalForAppIdAsync(
-                    setupConfig.TenantId,
-                    ConfigConstants.MessagingBotApiAppId);
-
-                // Grant OAuth2 permissions
-                var botApiGrantOk = await graphService.CreateOrUpdateOauth2PermissionGrantAsync(
-                    setupConfig.TenantId,
-                    blueprintSpObjectId,
-                    botApiResourceSpObjectId,
-                    new[] { "Authorization.ReadWrite", "user_impersonation" });
-
-                if (!botApiGrantOk)
-                {
-                    throw new InvalidOperationException("Failed to create/update oauth2PermissionGrant for Messaging Bot API");
-                }
-
-                // Set inheritable permissions
-                var (ok, already, err) = await graphService.SetInheritablePermissionsAsync(
-                    setupConfig.TenantId,
-                    setupConfig.AgentBlueprintId,
-                    ConfigConstants.MessagingBotApiAppId,
-                    new[] { "Authorization.ReadWrite", "user_impersonation" });
-
-                if (!ok && !already)
-                {
-                    throw new InvalidOperationException($"Failed to set inheritable permissions for Messaging Bot API: {err}");
-                }
-
-                logger.LogInformation("");
-                logger.LogInformation("Messaging Bot API permissions configured successfully");
-                logger.LogInformation("");
-                logger.LogInformation("Next step: Run 'a365 setup endpoint' to register messaging endpoint");
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Failed to configure Bot API permissions: {Message}", ex.Message);
-                Environment.Exit(1);
-            }
         }, configOption, verboseOption, dryRunOption);
 
         return command;
+    }
+
+    /// <summary>
+    /// Configures MCP server permissions (OAuth2 grants and inheritable permissions).
+    /// Public method that can be called by AllSubcommand.
+    /// </summary>
+    public static async Task ConfigureMcpPermissionsAsync(
+        string configPath,
+        ILogger logger,
+        IConfigService configService,
+        CommandExecutor executor,
+        Models.Agent365Config setupConfig,
+        CancellationToken cancellationToken = default)
+    {
+        logger.LogInformation("Configuring MCP server permissions...");
+        logger.LogInformation("");
+
+        var graphService = new GraphApiService(
+            LoggerFactory.Create(builder => builder.AddConsole()).CreateLogger<GraphApiService>(),
+            executor);
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(setupConfig.AgentBlueprintId))
+            {
+                logger.LogError("Blueprint ID not found. Run 'a365 setup blueprint' first.");
+                Environment.Exit(1);
+            }
+
+            // Read scopes from toolingManifest.json
+            var manifestPath = Path.Combine(setupConfig.DeploymentProjectPath ?? string.Empty, "toolingManifest.json");
+            var toolingScopes = await ManifestHelper.GetRequiredScopesAsync(manifestPath);
+
+            // OAuth2 permission grants
+            await SetupHelpers.EnsureMcpOauth2PermissionGrantsAsync(
+                graphService, setupConfig, toolingScopes, logger);
+
+            // Inheritable permissions
+            await SetupHelpers.EnsureMcpInheritablePermissionsAsync(
+                graphService, setupConfig, toolingScopes, logger);
+
+            logger.LogInformation("");
+            logger.LogInformation("MCP server permissions configured successfully");
+            logger.LogInformation("");
+            logger.LogInformation("Next step: Run 'a365 setup permissions bot' to configure Bot API permissions");
+        }
+        catch (Exception mcpEx)
+        {
+            logger.LogError("Failed to configure MCP server permissions: {Message}", mcpEx.Message);
+            logger.LogWarning("Setup will continue, but MCP server permissions must be configured manually");
+            logger.LogInformation("To configure MCP permissions manually:");
+            logger.LogInformation("  1. Ensure the agent blueprint has the required permissions in Azure Portal");
+            logger.LogInformation("  2. Grant admin consent for the MCP scopes");
+            logger.LogInformation("  3. Run 'a365 deploy mcp' to retry MCP permission configuration");
+            Environment.Exit(1);
+        }
+    }
+
+    /// <summary>
+    /// Configures Bot API permissions (OAuth2 grants and inheritable permissions).
+    /// Public method that can be called by AllSubcommand.
+    /// </summary>
+    public static async Task ConfigureBotPermissionsAsync(
+        string configPath,
+        ILogger logger,
+        IConfigService configService,
+        CommandExecutor executor,
+        Models.Agent365Config setupConfig,
+        CancellationToken cancellationToken = default)
+    {
+        logger.LogInformation("Configuring Messaging Bot API permissions...");
+        logger.LogInformation("");
+
+        var graphService = new GraphApiService(
+            LoggerFactory.Create(builder => builder.AddConsole()).CreateLogger<GraphApiService>(),
+            executor);
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(setupConfig.AgentBlueprintId))
+            {
+                logger.LogError("Blueprint ID not found. Run 'a365 setup blueprint' first.");
+                Environment.Exit(1);
+            }
+
+            var blueprintSpObjectId = await graphService.LookupServicePrincipalByAppIdAsync(setupConfig.TenantId, setupConfig.AgentBlueprintId)
+                ?? throw new InvalidOperationException($"Blueprint Service Principal not found for appId {setupConfig.AgentBlueprintId}");
+
+            // Ensure Messaging Bot API SP exists
+            var botApiResourceSpObjectId = await graphService.EnsureServicePrincipalForAppIdAsync(
+                setupConfig.TenantId,
+                ConfigConstants.MessagingBotApiAppId);
+
+            // Grant OAuth2 permissions
+            var botApiGrantOk = await graphService.CreateOrUpdateOauth2PermissionGrantAsync(
+                setupConfig.TenantId,
+                blueprintSpObjectId,
+                botApiResourceSpObjectId,
+                new[] { "Authorization.ReadWrite", "user_impersonation" });
+
+            if (!botApiGrantOk)
+            {
+                throw new InvalidOperationException("Failed to create/update oauth2PermissionGrant for Messaging Bot API");
+            }
+
+            // Set inheritable permissions
+            var (ok, already, err) = await graphService.SetInheritablePermissionsAsync(
+                setupConfig.TenantId,
+                setupConfig.AgentBlueprintId,
+                ConfigConstants.MessagingBotApiAppId,
+                new[] { "Authorization.ReadWrite", "user_impersonation" });
+
+            if (!ok && !already)
+            {
+                throw new InvalidOperationException($"Failed to set inheritable permissions for Messaging Bot API: {err}");
+            }
+
+            logger.LogInformation("");
+            logger.LogInformation("Messaging Bot API permissions configured successfully");
+            logger.LogInformation("");
+            logger.LogInformation("Next step: Run 'a365 setup endpoint' to register messaging endpoint");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to configure Bot API permissions: {Message}", ex.Message);
+            Environment.Exit(1);
+        }
     }
 }

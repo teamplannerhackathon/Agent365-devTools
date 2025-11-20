@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
+using Microsoft.Agents.A365.DevTools.Cli.Helpers;
 using Microsoft.Agents.A365.DevTools.Cli.Services;
 using Microsoft.Extensions.Logging;
 using System.CommandLine;
@@ -16,13 +17,12 @@ internal static class EndpointSubcommand
     public static Command CreateCommand(
         ILogger logger,
         IConfigService configService,
-        IBotConfigurator botConfigurator)
+        IBotConfigurator botConfigurator,
+        PlatformDetector platformDetector)
     {
         var command = new Command("endpoint", 
             "Register blueprint messaging endpoint (Azure Bot Service)\n" +
-            "Minimum required permissions: Azure Subscription Contributor\n" +
-            "Prerequisites: Blueprint and permissions must be configured (run permissions commands first)\n" +
-            "Next step: a365 create-instance identity (instance creation)\n");
+            "Minimum required permissions: Azure Subscription Contributor\n");
 
         var configOption = new Option<FileInfo>(
             ["--config", "-c"],
@@ -64,6 +64,7 @@ internal static class EndpointSubcommand
                 logger.LogInformation("  - Endpoint Name: {Name}-endpoint", setupConfig.WebAppName);
                 logger.LogInformation("  - Messaging URL: https://{Name}.azurewebsites.net/api/messages", setupConfig.WebAppName);
                 logger.LogInformation("  - Blueprint ID: {Id}", setupConfig.AgentBlueprintId);
+                logger.LogInformation("Would sync generated configuration to project settings");
                 return;
             }
 
@@ -77,19 +78,105 @@ internal static class EndpointSubcommand
 
                 logger.LogInformation("");
                 logger.LogInformation("Blueprint messaging endpoint registered successfully");
-                logger.LogInformation("");
-                logger.LogInformation("Setup complete! Next steps:");
-                logger.LogInformation("  1. Review Azure resources: a365 config display");
-                logger.LogInformation("  2. Create agent instance: a365 create-instance identity");
-                logger.LogInformation("  3. Deploy application: a365 deploy app");
             }
             catch (Exception ex)
             {
                 logger.LogError(ex, "Failed to register messaging endpoint: {Message}", ex.Message);
                 Environment.Exit(1);
             }
+
+            // Sync generated config to project settings (appsettings.json or .env)
+            logger.LogInformation("");
+            logger.LogInformation("Syncing configuration to project settings...");
+                
+            var generatedConfigPath = Path.Combine(
+                config.DirectoryName ?? Environment.CurrentDirectory,
+                "a365.generated.config.json");
+
+            try
+            {
+                await ProjectSettingsSyncHelper.ExecuteAsync(
+                    a365ConfigPath: config.FullName,
+                    a365GeneratedPath: generatedConfigPath,
+                    configService: configService,
+                    platformDetector: platformDetector,
+                    logger: logger);
+
+                logger.LogInformation("Configuration synced to project settings successfully");
+            }
+            catch (Exception syncEx)
+            {
+                logger.LogWarning(syncEx, "Project settings sync failed (non-blocking). Please sync settings manually if needed.");
+            }
+
+            // Display verification info and summary
+            await SetupHelpers.DisplayVerificationInfoAsync(config, logger);
+            
         }, configOption, verboseOption, dryRunOption);
 
         return command;
     }
+
+    #region Public Static Implementation Method (for AllSubcommand)
+
+    /// <summary>
+    /// Registers blueprint messaging endpoint and syncs project settings.
+    /// Public method that can be called by AllSubcommand.
+    /// </summary>
+    public static async Task RegisterEndpointAndSyncAsync(
+        string configPath,
+        ILogger logger,
+        IConfigService configService,
+        IBotConfigurator botConfigurator,
+        PlatformDetector platformDetector,
+        CancellationToken cancellationToken = default)
+    {
+        var setupConfig = await configService.LoadAsync(configPath);
+
+        if (string.IsNullOrWhiteSpace(setupConfig.AgentBlueprintId))
+        {
+            throw new InvalidOperationException("Blueprint ID not found. Run 'a365 setup blueprint' first.");
+        }
+
+        if (string.IsNullOrWhiteSpace(setupConfig.WebAppName))
+        {
+            throw new InvalidOperationException("Web App Name not found. Run 'a365 setup infrastructure' first.");
+        }
+
+        logger.LogInformation("Registering blueprint messaging endpoint...");
+        logger.LogInformation("");
+
+        await SetupHelpers.RegisterBlueprintMessagingEndpointAsync(
+            setupConfig, logger, botConfigurator);
+
+        logger.LogInformation("");
+        logger.LogInformation("Blueprint messaging endpoint registered successfully");
+
+        // Sync generated config to project settings (appsettings.json or .env)
+        logger.LogInformation("");
+        logger.LogInformation("Syncing configuration to project settings...");
+            
+        var configFileInfo = new FileInfo(configPath);
+        var generatedConfigPath = Path.Combine(
+            configFileInfo.DirectoryName ?? Environment.CurrentDirectory,
+            "a365.generated.config.json");
+
+        try
+        {
+            await ProjectSettingsSyncHelper.ExecuteAsync(
+                a365ConfigPath: configPath,
+                a365GeneratedPath: generatedConfigPath,
+                configService: configService,
+                platformDetector: platformDetector,
+                logger: logger);
+
+            logger.LogInformation("Configuration synced to project settings successfully");
+        }
+        catch (Exception syncEx)
+        {
+            logger.LogWarning(syncEx, "Project settings sync failed (non-blocking). Please sync settings manually if needed.");
+        }
+    }
+
+    #endregion
 }

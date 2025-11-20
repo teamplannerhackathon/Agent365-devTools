@@ -8,6 +8,7 @@ namespace Microsoft.Agents.A365.DevTools.Cli.Commands.SetupSubcommands;
 /// </summary>
 public class SetupResults
 {
+    public bool InfrastructureCreated { get; set; }
     public bool BlueprintCreated { get; set; }
     public string? BlueprintId { get; set; }
     public bool McpPermissionsConfigured { get; set; }
