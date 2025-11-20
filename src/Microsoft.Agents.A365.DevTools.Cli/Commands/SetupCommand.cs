@@ -147,7 +147,7 @@ public class SetupCommand
                     logger.LogError("Agent blueprint creation failed");
                     setupResults.BlueprintCreated = false;
                     setupResults.Errors.Add("Agent blueprint creation failed");
-                    throw new InvalidOperationException("Setup runner execution failed");
+                    throw new SetupValidationException("Setup runner execution failed");
                 }
 
                 setupResults.BlueprintCreated = true;
@@ -224,10 +224,10 @@ public class SetupCommand
                 logger.LogInformation("");
 
                 if (string.IsNullOrWhiteSpace(setupConfig.AgentBlueprintId))
-                    throw new InvalidOperationException("AgentBlueprintId is required.");
+                    throw new SetupValidationException("AgentBlueprintId is required.");
 
                 var blueprintSpObjectId = await graphApiService.LookupServicePrincipalByAppIdAsync(setupConfig.TenantId, setupConfig.AgentBlueprintId)
-                    ?? throw new InvalidOperationException($"Blueprint Service Principal not found for appId {setupConfig.AgentBlueprintId}");
+                    ?? throw new SetupValidationException($"Blueprint Service Principal not found for appId {setupConfig.AgentBlueprintId}");
 
                 // Ensure Messaging Bot API SP exists
                 var botApiResourceSpObjectId = await graphApiService.EnsureServicePrincipalForAppIdAsync(
@@ -407,7 +407,21 @@ public class SetupCommand
         if (string.IsNullOrEmpty(setupConfig.AgentBlueprintId))
         {
             logger.LogError("Agent Blueprint ID not found. Blueprint creation may have failed.");
-            throw new InvalidOperationException("Agent Blueprint ID is required for messaging endpoint registration");
+            throw new SetupValidationException(
+                issueDescription: "Agent blueprint was not found – messaging endpoint cannot be registered.",
+                errorDetails: new List<string>
+                {
+                    "AgentBlueprintId is missing from configuration. This usually means the blueprint creation step failed or a365.generated.config.json is out of sync."
+                },
+                mitigationSteps: new List<string>
+                {
+                    "Verify that 'a365 setup' completed Step 1 (Agent blueprint creation) without errors.",
+                    "Check a365.generated.config.json for 'agentBlueprintId'. If it's missing or incorrect, re-run 'a365 setup'."
+                },
+                context: new Dictionary<string, string>
+                {
+                    ["AgentBlueprintId"] = setupConfig.AgentBlueprintId ?? "<null>"
+                });
         }
 
         string messagingEndpoint;
@@ -417,7 +431,23 @@ public class SetupCommand
             if (string.IsNullOrEmpty(setupConfig.WebAppName))
             {
                 logger.LogError("Web App Name not configured in a365.config.json");
-                throw new InvalidOperationException("Web App Name is required for messaging endpoint registration");
+                throw new SetupValidationException(
+                    issueDescription: "Web App name is required to register a messaging endpoint when needDeployment is 'yes'.",
+                    errorDetails: new List<string>
+                    {
+                        "NeedWebAppDeployment is true, but 'webAppName' was not provided in a365.config.json."
+                    },
+                    mitigationSteps: new List<string>
+                    {
+                        "Open a365.config.json and ensure 'webAppName' is set to the Azure Web App name.",
+                        "If you do not want the CLI to deploy an Azure Web App, set \"needDeployment\": \"no\" and provide \"MessagingEndpoint\" instead.",
+                        "Re-run 'a365 setup'."
+                    },
+                    context: new Dictionary<string, string>
+                    {
+                        ["needDeployment"] = setupConfig.NeedWebAppDeployment.ToString(),
+                        ["webAppName"] = setupConfig.WebAppName ?? "<null>"
+                    });
             }
 
             // Generate endpoint name with Azure Bot Service constraints (4-42 chars)
@@ -432,8 +462,21 @@ public class SetupCommand
             // No deployment – use the provided MessagingEndpoint
             if (string.IsNullOrWhiteSpace(setupConfig.MessagingEndpoint))
             {
-                logger.LogError("MessagingEndpoint must be provided in a365.config.json for External hosting mode");
-                throw new InvalidOperationException("MessagingEndpoint is required for messaging endpoint registration");
+                logger.LogError("MessagingEndpoint must be provided in a365.config.json for non-Azure hosting.");
+                throw new SetupValidationException(
+                    issueDescription: "Messaging endpoint is required for messaging endpoint registration.",
+                    errorDetails: new List<string>
+                    {
+                        "needDeployment is set to 'no', but MessagingEndpoint was not provided in a365.config.json."
+                    },
+                    mitigationSteps: new List<string>
+                    {
+                        "Open your a365.config.json file.",
+                        "If you want the CLI to deploy an Azure Web App, set \"needDeployment\": \"yes\" and provide \"webAppName\".",
+                        "If your agent is hosted elsewhere, keep \"needDeployment\": \"no\" and add a \"MessagingEndpoint\" with a valid HTTPS URL (e.g. \"https://your-host/api/messages\").",
+                        "Re-run 'a365 setup'."
+                    }
+                );
             }
 
             if (!Uri.TryCreate(setupConfig.MessagingEndpoint, UriKind.Absolute, out var uri) ||
@@ -441,7 +484,7 @@ public class SetupCommand
             {
                 logger.LogError("MessagingEndpoint must be a valid HTTPS URL. Current value: {Endpoint}",
                     setupConfig.MessagingEndpoint);
-                throw new InvalidOperationException("MessagingEndpoint must be a valid HTTPS URL.");
+                throw new SetupValidationException("MessagingEndpoint must be a valid HTTPS URL.");
             }
 
             messagingEndpoint = setupConfig.MessagingEndpoint;
@@ -455,7 +498,7 @@ public class SetupCommand
         if (endpointName.Length < 4)
         {
             logger.LogError("Bot endpoint name '{EndpointName}' is too short (must be at least 4 characters)", endpointName);
-            throw new InvalidOperationException($"Bot endpoint name '{endpointName}' is too short (must be at least 4 characters)");
+            throw new SetupValidationException($"Bot endpoint name '{endpointName}' is too short (must be at least 4 characters)");
         }
         
         logger.LogInformation("   - Registering blueprint messaging endpoint");
@@ -473,7 +516,7 @@ public class SetupCommand
         if (!endpointRegistered)
         {
             logger.LogError("Failed to register blueprint messaging endpoint");
-            throw new InvalidOperationException("Blueprint messaging endpoint registration failed");
+            throw new SetupValidationException("Blueprint messaging endpoint registration failed");
         }
     }
 
@@ -488,12 +531,12 @@ public class SetupCommand
         CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(config.AgentBlueprintId))
-            throw new InvalidOperationException("AgentBlueprintId (appId) is required.");
+            throw new SetupValidationException("AgentBlueprintId (appId) is required.");
 
         var blueprintSpObjectId = await graph.LookupServicePrincipalByAppIdAsync(config.TenantId, config.AgentBlueprintId, ct);
         if (string.IsNullOrWhiteSpace(blueprintSpObjectId))
         {
-            throw new InvalidOperationException($"Blueprint Service Principal not found for appId {config.AgentBlueprintId}. " +
+            throw new SetupValidationException($"Blueprint Service Principal not found for appId {config.AgentBlueprintId}. " +
                 "The service principal may not have propagated yet. Wait a few minutes and retry.");
         }
 
@@ -501,7 +544,7 @@ public class SetupCommand
         var Agent365ToolsSpObjectId = await graph.LookupServicePrincipalByAppIdAsync(config.TenantId, resourceAppId, ct);
         if (string.IsNullOrWhiteSpace(Agent365ToolsSpObjectId))
         {
-            throw new InvalidOperationException($"Agent 365 Tools Service Principal not found for appId {resourceAppId}. " +
+            throw new SetupValidationException($"Agent 365 Tools Service Principal not found for appId {resourceAppId}. " +
                 $"Ensure the Agent 365 Tools application is available in your tenant for environment: {config.Environment}");
         }
 
@@ -513,7 +556,7 @@ public class SetupCommand
 
         if (!response)
         {
-            throw new InvalidOperationException(
+            throw new SetupValidationException(
                 $"Failed to create/update OAuth2 permission grant from blueprint {config.AgentBlueprintId} to Agent 365 Tools {resourceAppId}. " +
                 "This may be due to insufficient permissions. Ensure you have DelegatedPermissionGrant.ReadWrite.All or Application.ReadWrite.All permissions.");
         }
@@ -530,7 +573,7 @@ public class SetupCommand
         CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(config.AgentBlueprintId))
-            throw new InvalidOperationException("AgentBlueprintId (appId) is required.");
+            throw new SetupValidationException("AgentBlueprintId (appId) is required.");
 
         var resourceAppId = ConfigConstants.GetAgent365ToolsResourceAppId(config.Environment);
 
@@ -544,7 +587,7 @@ public class SetupCommand
         {
             config.InheritanceConfigured = false;
             config.InheritanceConfigError = err;
-            throw new InvalidOperationException($"Failed to set inheritable permissions: {err}. " +
+            throw new SetupValidationException($"Failed to set inheritable permissions: {err}. " +
                 "Ensure you have Application.ReadWrite.All permissions and the blueprint supports inheritable permissions.");
         }
 
