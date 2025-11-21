@@ -281,6 +281,7 @@ public class SetupCommand
                     setupConfig = await configService.LoadAsync(config.FullName);
                     
                     await RegisterBlueprintMessagingEndpointAsync(setupConfig, logger, botConfigurator);
+                    await configService.SaveStateAsync(setupConfig);
                     setupResults.MessagingEndpointRegistered = true;
                     logger.LogInformation("Blueprint messaging endpoint registered successfully");
                 }
@@ -493,6 +494,7 @@ public class SetupCommand
             var hostPart = uri.Host.Replace('.', '-');
             var baseEndpointName = $"{hostPart}-endpoint";
             endpointName = EndpointHelper.GetEndpointName(baseEndpointName);
+
         }
 
         if (endpointName.Length < 4)
@@ -518,6 +520,11 @@ public class SetupCommand
             logger.LogError("Failed to register blueprint messaging endpoint");
             throw new SetupValidationException("Blueprint messaging endpoint registration failed");
         }
+        // Update Agent365Config state properties
+        setupConfig.BotId = setupConfig.AgentBlueprintId;
+        setupConfig.BotMsaAppId = setupConfig.AgentBlueprintId;
+        setupConfig.BotMessagingEndpoint = messagingEndpoint;
+
     }
 
     /// <summary>
@@ -684,29 +691,6 @@ public class SetupCommand
         }
         
         logger.LogInformation("==========================================");
-    }
-
-    /// <summary>
-    /// Extract web app name from Azure Web App URL (e.g., "SampleAgent" from "https://SampleAgent.azurewebsites.net/api/messages")
-    /// </summary>
-    private static string? ExtractWebAppNameFromUrl(string url)
-    {
-        if (string.IsNullOrWhiteSpace(url))
-            return null;
-
-        try
-        {
-            var host = new Uri(url).Host;
-
-            // Split by '.' and take the first segment
-            var segments = host.Split('.');
-            return segments.Length > 0 ? segments[0] : null;
-        }
-        catch
-        {
-            // If URL parsing fails, return null
-            return null;
-        }
     }
 }
 

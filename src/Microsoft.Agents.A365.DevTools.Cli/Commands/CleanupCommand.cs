@@ -165,15 +165,14 @@ public class CleanupCommand
                 var commandsList = new List<(string, string)>();
 
                 // If WebAppName is configured
-                if (!string.IsNullOrWhiteSpace(config.WebAppName))
+                if (config.NeedDeployment)
                 {
                     commandsList.Add(($"az webapp delete --name {config.WebAppName} --resource-group {config.ResourceGroup} --subscription {config.SubscriptionId}", "Web App"));
-                }
-
-                // Only add App Service Plan deletion if AppServicePlanName is configured
-                if (!string.IsNullOrWhiteSpace(config.AppServicePlanName))
-                {
-                    commandsList.Add(($"az appservice plan delete --name {config.AppServicePlanName} --resource-group {config.ResourceGroup} --subscription {config.SubscriptionId} --yes", "App Service Plan"));
+                    // Only add App Service Plan deletion if AppServicePlanName is configured
+                    if (!string.IsNullOrWhiteSpace(config.AppServicePlanName))
+                    {
+                        commandsList.Add(($"az appservice plan delete --name {config.AppServicePlanName} --resource-group {config.ResourceGroup} --subscription {config.SubscriptionId} --yes", "App Service Plan"));
+                    }
                 }
 
                 // Add bot deletion if bot exists

@@ -74,8 +74,9 @@ public class DeployCommand
                 }
 
                 // Check if web app deployment should be skipped (external messaging endpoint)
-                if (ShouldSkipWebAppDeployment(configData, logger))
+                if (!configData.NeedDeployment)
                 {
+                    logger.LogInformation("Web App deployment is skipped as per configuration.");
                     return;
                 }
 
@@ -148,8 +149,9 @@ public class DeployCommand
                 }
 
                 // Check if web app deployment should be skipped (external messaging endpoint)
-                if (ShouldSkipWebAppDeployment(configData, logger))
+                if (!configData.NeedDeployment)
                 {
+                    logger.LogInformation("Web App deployment is skipped as per configuration.");
                     return;
                 }
 
@@ -471,23 +473,6 @@ public class DeployCommand
                 
                 throw new DeployAppException($"Deployment failed: {ex.Message}", ex);
         }
-    }
-
-    /// <summary>
-    /// Determines if web app deployment should be skipped because an external messaging endpoint is configured
-    /// </summary>
-    /// <param name="config">Configuration to check</param>
-    /// <param name="logger">Logger for informational messages</param>
-    /// <returns>True if deployment should be skipped, false otherwise</returns>
-    private static bool ShouldSkipWebAppDeployment(Agent365Config config, ILogger logger)
-    {
-        if (string.IsNullOrWhiteSpace(config.WebAppName) && !string.IsNullOrWhiteSpace(config.MessagingEndpoint))
-        {
-            logger.LogInformation($"MessagingEndpoint {config.MessagingEndpoint} is already provided and hence WebApp deployment is skipped.");
-            return true;
-        }
-
-        return false;
     }
 }
 
