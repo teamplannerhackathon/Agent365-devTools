@@ -86,7 +86,7 @@ public class SetupCommand
             {
                 // Load configuration - ConfigService automatically finds generated config in same directory
                 var setupConfig = await configService.LoadAsync(config.FullName);
-                if (setupConfig.NeedWebAppDeployment)
+                if (setupConfig.NeedDeployment)
                 {
                     // Validate Azure CLI authentication, subscription, and environment
                     if (!await azureValidator.ValidateAllAsync(setupConfig.SubscriptionId))
@@ -96,7 +96,7 @@ public class SetupCommand
                 }
                 else
                 {
-                    logger.LogInformation("NeedWebAppDeployment=no – skipping Azure subscription validation.");
+                    logger.LogInformation("NeedDeployment=false – skipping Azure subscription validation.");
                 }
                 
                 logger.LogInformation("");
@@ -426,7 +426,7 @@ public class SetupCommand
 
         string messagingEndpoint;
         string endpointName;
-        if (setupConfig.NeedWebAppDeployment) 
+        if (setupConfig.NeedDeployment) 
         {
             if (string.IsNullOrEmpty(setupConfig.WebAppName))
             {
@@ -435,7 +435,7 @@ public class SetupCommand
                     issueDescription: "Web App name is required to register a messaging endpoint when needDeployment is 'yes'.",
                     errorDetails: new List<string>
                     {
-                        "NeedWebAppDeployment is true, but 'webAppName' was not provided in a365.config.json."
+                        "NeedDeployment is true, but 'webAppName' was not provided in a365.config.json."
                     },
                     mitigationSteps: new List<string>
                     {
@@ -445,7 +445,7 @@ public class SetupCommand
                     },
                     context: new Dictionary<string, string>
                     {
-                        ["needDeployment"] = setupConfig.NeedWebAppDeployment.ToString(),
+                        ["needDeployment"] = setupConfig.NeedDeployment.ToString(),
                         ["webAppName"] = setupConfig.WebAppName ?? "<null>"
                     });
             }

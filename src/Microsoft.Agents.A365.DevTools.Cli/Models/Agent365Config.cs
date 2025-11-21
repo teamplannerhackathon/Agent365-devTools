@@ -27,7 +27,7 @@ public class Agent365Config
 
         if (string.IsNullOrWhiteSpace(TenantId)) errors.Add("tenantId is required.");
 
-        if (NeedWebAppDeployment)
+        if (NeedDeployment)
         {
             if (string.IsNullOrWhiteSpace(SubscriptionId)) errors.Add("subscriptionId is required.");
             if (string.IsNullOrWhiteSpace(ResourceGroup)) errors.Add("resourceGroup is required.");
@@ -39,7 +39,7 @@ public class Agent365Config
         {
             // Non-Azure hosting
             if (string.IsNullOrWhiteSpace(MessagingEndpoint))
-                errors.Add("messagingEndpoint is required when needWebAppDeployment is 'no'.");
+                errors.Add("messagingEndpoint is required when needDeployment is 'no'.");
         }
 
         if (string.IsNullOrWhiteSpace(AgentIdentityDisplayName)) errors.Add("agentIdentityDisplayName is required.");
@@ -99,11 +99,11 @@ public class Agent365Config
     /// <summary>
     /// Whether the CLI should create and deploy an Azure Web App for this agent.
     /// Backed by the 'needDeployment' config value:
-    /// - "yes" (default) => CLI provisions App Service + MSI, a365 deploy app is active.
-    /// - "no"  => CLI does NOT create a web app; a365 deploy app is a no-op and MessagingEndpoint must be provided.
+    /// - true (default) => CLI provisions App Service + MSI, a365 deploy app is active.
+    /// - false => CLI does NOT create a web app; a365 deploy app is a no-op and MessagingEndpoint must be provided.
     /// </summary>
     [JsonPropertyName("needDeployment")]
-    public string NeedDeployment { get; init; } = "yes";
+    public bool NeedDeployment { get; init; } = true;
 
     #endregion
 
@@ -215,12 +215,6 @@ public class Agent365Config
             return string.Empty;
         }
     }
-
-    /// <summary>
-    /// Whether the CLI should perform web app deployment for the agent.
-    /// </summary>
-    [JsonIgnore]
-    public bool NeedWebAppDeployment => !string.Equals(NeedDeployment, "no", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Gets the display name for the bot, derived from AgentBlueprintDisplayName or WebAppName.

@@ -380,7 +380,7 @@ public class ConfigService : IConfigService
         ValidateRequired(config.TenantId, nameof(config.TenantId), errors);
         ValidateGuid(config.TenantId, nameof(config.TenantId), errors);
 
-        if (config.NeedWebAppDeployment)
+        if (config.NeedDeployment)
         {
             // Validate required static properties
             ValidateRequired(config.SubscriptionId, nameof(config.SubscriptionId), errors);
@@ -483,8 +483,7 @@ public class ConfigService : IConfigService
             AgentIdentityDisplayName = string.Empty,
             // AgentIdentityScopes and AgentApplicationScopes are now hardcoded defaults
             DeploymentProjectPath = string.Empty,
-            AgentDescription = string.Empty,
-            NeedDeployment = "yes"
+            AgentDescription = string.Empty
         };
 
         // Only serialize static (init) properties for the config file

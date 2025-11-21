@@ -136,10 +136,10 @@ public sealed class A365SetupRunner
         if (string.IsNullOrWhiteSpace(planSku)) planSku = "B1";
         
         var deploymentProjectPath = Get("deploymentProjectPath");
-        var needDeploymentRaw = Get("needDeployment");
-        var needWebAppDeployment = !string.Equals(needDeploymentRaw, "no", StringComparison.OrdinalIgnoreCase);
         
-        var skipInfra = blueprintOnly || !needWebAppDeployment;
+        bool needDeployment = CheckNeedDeployment(cfg);
+
+        var skipInfra = blueprintOnly || !needDeployment;
         if (!skipInfra)
         {
             // Azure hosting scenario – need full infra details
@@ -1747,6 +1747,29 @@ public sealed class A365SetupRunner
         }
         
         return false;
+    }
+
+    private bool CheckNeedDeployment(JsonObject setupConfig)
+    {
+        bool needDeployment = true; // default
+        if (setupConfig.TryGetPropertyValue("needDeployment", out var needDeploymentNode) &&
+            needDeploymentNode is JsonValue nv)
+        {
+            // Prefer native bool
+            if (nv.TryGetValue<bool>(out var boolVal))
+            {
+                needDeployment = boolVal;
+            }
+            else if (nv.TryGetValue<string?>(out var strVal) && !string.IsNullOrWhiteSpace(strVal))
+            {
+                // Backward compatibility with "yes"/"no" / "true"/"false"
+                needDeployment =
+                    !string.Equals(strVal, "no", StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(strVal, "false", StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        return needDeployment;
     }
     
     /// <summary>
