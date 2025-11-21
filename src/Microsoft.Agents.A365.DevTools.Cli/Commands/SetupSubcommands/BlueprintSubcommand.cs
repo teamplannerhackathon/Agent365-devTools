@@ -37,9 +37,7 @@ internal static class BlueprintSubcommand
     {
         var command = new Command("blueprint", 
             "Create agent blueprint (Entra ID application registration)\n" +
-            "Minimum required permissions: Agent ID Developer role\n" +
-            "Prerequisites: Infrastructure (run 'a365 setup infrastructure' first if needed)\n" +
-            "Next step: a365 setup permissions mcp");
+            "Minimum required permissions: Agent ID Developer role\n");
 
         var configOption = new Option<FileInfo>(
             ["--config", "-c"],

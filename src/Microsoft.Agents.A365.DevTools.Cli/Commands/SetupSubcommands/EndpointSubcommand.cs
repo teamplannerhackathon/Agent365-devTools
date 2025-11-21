@@ -68,46 +68,12 @@ internal static class EndpointSubcommand
                 return;
             }
 
-            logger.LogInformation("Registering blueprint messaging endpoint...");
-            logger.LogInformation("");
-
-            try
-            {
-                await SetupHelpers.RegisterBlueprintMessagingEndpointAsync(
-                    setupConfig, logger, botConfigurator);
-
-                logger.LogInformation("");
-                logger.LogInformation("Blueprint messaging endpoint registered successfully");
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Failed to register messaging endpoint: {Message}", ex.Message);
-                Environment.Exit(1);
-            }
-
-            // Sync generated config to project settings (appsettings.json or .env)
-            logger.LogInformation("");
-            logger.LogInformation("Syncing configuration to project settings...");
-                
-            var generatedConfigPath = Path.Combine(
-                config.DirectoryName ?? Environment.CurrentDirectory,
-                "a365.generated.config.json");
-
-            try
-            {
-                await ProjectSettingsSyncHelper.ExecuteAsync(
-                    a365ConfigPath: config.FullName,
-                    a365GeneratedPath: generatedConfigPath,
-                    configService: configService,
-                    platformDetector: platformDetector,
-                    logger: logger);
-
-                logger.LogInformation("Configuration synced to project settings successfully");
-            }
-            catch (Exception syncEx)
-            {
-                logger.LogWarning(syncEx, "Project settings sync failed (non-blocking). Please sync settings manually if needed.");
-            }
+            await RegisterEndpointAndSyncAsync(
+                configPath: config.FullName,
+                logger: logger,
+                configService: configService,
+                botConfigurator: botConfigurator,
+                platformDetector: platformDetector);
 
             // Display verification info and summary
             await SetupHelpers.DisplayVerificationInfoAsync(config, logger);

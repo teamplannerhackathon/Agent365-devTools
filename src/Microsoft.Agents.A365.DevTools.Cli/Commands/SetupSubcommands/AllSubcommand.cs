@@ -35,8 +35,7 @@ internal static class AllSubcommand
             "Minimum required permissions (Global Administrator has all of these):\n" +
             "  - Azure Subscription Contributor (for infrastructure and endpoint)\n" +
             "  - Agent ID Developer role (for blueprint creation)\n" +
-            "  - Global Administrator (for permission grants and admin consent)\n\n" +
-            "Note: If you have Global Administrator, you don't need the other roles.\n");
+            "  - Global Administrator (for permission grants and admin consent)\n\n");
 
         var configOption = new Option<FileInfo>(
             ["--config", "-c"],
@@ -72,7 +71,7 @@ internal static class AllSubcommand
                 
                 if (!skipInfrastructure)
                 {
-                    logger.LogInformation("  1. Create Azure infrastructure (Resource Group, App Service Plan, Web App, MSI)");
+                    logger.LogInformation("  1. Create Azure infrastructure");
                 }
                 else
                 {

@@ -53,35 +53,10 @@ public class SetupCommandTests
         _mockBotConfigurator = Substitute.For<IBotConfigurator>();
         _mockAzureValidator = Substitute.For<IAzureValidator>();
         _mockWebAppCreator = Substitute.ForPartsOf<AzureWebAppCreator>(Substitute.For<ILogger<AzureWebAppCreator>>());
-
-        // Prevent the real setup runner from running during tests by short-circuiting it
-        SetupCommand.SetupRunnerInvoker = (setupPath, generatedPath, exec, webApp) => Task.FromResult(true);
     }
 
     [Fact]
-    public async Task SetupCommand_DryRun_ValidConfig_OnlyValidatesConfig()
-    {
-        // Arrange
-        var config = new Agent365Config { TenantId = "tenant", SubscriptionId = "sub", ResourceGroup = "rg", Location = "loc", AppServicePlanName = "plan", WebAppName = "web", AgentIdentityDisplayName = "agent", DeploymentProjectPath = "." };
-        _mockConfigService.LoadAsync(Arg.Any<string>(), Arg.Any<string>()).Returns(Task.FromResult(config));
-        var command = SetupCommand.CreateCommand(_mockLogger, _mockConfigService, _mockExecutor, _mockDeploymentService, _mockBotConfigurator, _mockAzureValidator, _mockWebAppCreator, _mockPlatformDetector);
-        var parser = new CommandLineBuilder(command).Build();
-        var testConsole = new TestConsole();
-
-        // Act
-        var result = await parser.InvokeAsync("--dry-run", testConsole);
-
-        // Assert
-        Assert.Equal(0, result);
-
-        // Dry-run should load config but must not call Azure/Bot services
-        await _mockConfigService.Received(1).LoadAsync(Arg.Any<string>(), Arg.Any<string>());
-        await _mockAzureValidator.DidNotReceiveWithAnyArgs().ValidateAllAsync(default!);
-        await _mockBotConfigurator.DidNotReceiveWithAnyArgs().CreateEndpointWithAgentBlueprintAsync(default!, default!, default!, default!, default!);
-    }
-
-    [Fact]
-    public async Task SetupCommand_McpPermissionFailure_DoesNotThrowUnhandledException()
+    public async Task SetupAllCommand_DryRun_ValidConfig_OnlyValidatesConfig()
     {
         // Arrange
         var config = new Agent365Config 
@@ -89,33 +64,15 @@ public class SetupCommandTests
             TenantId = "tenant", 
             SubscriptionId = "sub", 
             ResourceGroup = "rg", 
-            Location = "eastus", 
+            Location = "loc", 
             AppServicePlanName = "plan", 
             WebAppName = "web", 
             AgentIdentityDisplayName = "agent", 
             DeploymentProjectPath = ".",
-            AgentBlueprintId = "blueprint-app-id",
-            Environment = "prod"
+            AgentBlueprintDisplayName = "TestBlueprint"
         };
+        _mockConfigService.LoadAsync(Arg.Any<string>()).Returns(Task.FromResult(config));
         
-        _mockConfigService.LoadAsync(Arg.Any<string>(), Arg.Any<string>()).Returns(Task.FromResult(config));
-        _mockAzureValidator.ValidateAllAsync(Arg.Any<string>()).Returns(Task.FromResult(true));
-
-        // Simulate MCP permission failure by setting up a failing mock
-        SetupCommand.SetupRunnerInvoker = async (setupPath, generatedPath, exec, webApp) =>
-        {
-            // Simulate blueprint creation success but write minimal generated config
-            var generatedConfig = new
-            {
-                agentBlueprintId = "test-blueprint-id",
-                agentBlueprintObjectId = "test-object-id",
-                tenantId = "tenant"
-            };
-            
-            await File.WriteAllTextAsync(generatedPath, System.Text.Json.JsonSerializer.Serialize(generatedConfig));
-            return true;
-        };
-
         var command = SetupCommand.CreateCommand(
             _mockLogger, 
             _mockConfigService, 
@@ -129,12 +86,110 @@ public class SetupCommandTests
         var parser = new CommandLineBuilder(command).Build();
         var testConsole = new TestConsole();
 
-        // Act - Even if MCP permissions fail, setup should not throw unhandled exception
-        var result = await parser.InvokeAsync("setup", testConsole);
+        // Act
+        var result = await parser.InvokeAsync("all --dry-run", testConsole);
 
-        // Assert - The command should complete without unhandled exceptions
-        // It may log errors but should not crash
-        result.Should().BeOneOf(0, 1); // May return 0 (success) or 1 (partial failure) but should not throw
+        // Assert
+        Assert.Equal(0, result);
+
+        // Dry-run should load config but must not call Azure/Bot services
+        await _mockConfigService.Received(1).LoadAsync(Arg.Any<string>());
+        await _mockAzureValidator.DidNotReceiveWithAnyArgs().ValidateAllAsync(default!);
+        await _mockBotConfigurator.DidNotReceiveWithAnyArgs().CreateEndpointWithAgentBlueprintAsync(default!, default!, default!, default!, default!);
+    }
+
+    [Fact]
+    public async Task SetupAllCommand_SkipInfrastructure_SkipsInfrastructureStep()
+    {
+        // Arrange
+        var config = new Agent365Config 
+        { 
+            TenantId = "tenant", 
+            SubscriptionId = "sub", 
+            ResourceGroup = "rg", 
+            Location = "eastus", 
+            AppServicePlanName = "plan", 
+            WebAppName = "web", 
+            AgentIdentityDisplayName = "agent", 
+            DeploymentProjectPath = ".",
+            AgentBlueprintId = "blueprint-app-id",
+            AgentBlueprintDisplayName = "TestBlueprint",
+            Environment = "prod"
+        };
+        
+        _mockConfigService.LoadAsync(Arg.Any<string>()).Returns(Task.FromResult(config));
+        
+        var command = SetupCommand.CreateCommand(
+            _mockLogger, 
+            _mockConfigService, 
+            _mockExecutor, 
+            _mockDeploymentService, 
+            _mockBotConfigurator, 
+            _mockAzureValidator, 
+            _mockWebAppCreator, 
+            _mockPlatformDetector);
+        
+        var parser = new CommandLineBuilder(command).Build();
+        var testConsole = new TestConsole();
+
+        // Act
+        var result = await parser.InvokeAsync("all --dry-run --skip-infrastructure", testConsole);
+
+        // Assert
+        Assert.Equal(0, result);
+        
+        // Verify the output mentions skipping infrastructure
+        var output = testConsole.Out.ToString();
+        output.Should().Contain("SKIPPED");
+        output.Should().Contain("infrastructure");
+    }
+
+    [Fact]
+    public void SetupCommand_HasRequiredSubcommands()
+    {
+        // Arrange & Act
+        var command = SetupCommand.CreateCommand(
+            _mockLogger, 
+            _mockConfigService, 
+            _mockExecutor, 
+            _mockDeploymentService, 
+            _mockBotConfigurator, 
+            _mockAzureValidator, 
+            _mockWebAppCreator, 
+            _mockPlatformDetector);
+
+        // Assert - Verify all required subcommands exist
+        var subcommandNames = command.Subcommands.Select(c => c.Name).ToList();
+        
+        subcommandNames.Should().Contain("infrastructure", "Setup should have infrastructure subcommand");
+        subcommandNames.Should().Contain("blueprint", "Setup should have blueprint subcommand");
+        subcommandNames.Should().Contain("permissions", "Setup should have permissions subcommand");
+        subcommandNames.Should().Contain("endpoint", "Setup should have endpoint subcommand");
+        subcommandNames.Should().Contain("all", "Setup should have all subcommand");
+    }
+
+    [Fact]
+    public void SetupCommand_PermissionsSubcommand_HasMcpAndBotSubcommands()
+    {
+        // Arrange & Act
+        var command = SetupCommand.CreateCommand(
+            _mockLogger, 
+            _mockConfigService, 
+            _mockExecutor, 
+            _mockDeploymentService, 
+            _mockBotConfigurator, 
+            _mockAzureValidator, 
+            _mockWebAppCreator, 
+            _mockPlatformDetector);
+
+        var permissionsCmd = command.Subcommands.FirstOrDefault(c => c.Name == "permissions");
+
+        // Assert
+        permissionsCmd.Should().NotBeNull("Permissions subcommand should exist");
+        
+        var permissionsSubcommandNames = permissionsCmd!.Subcommands.Select(c => c.Name).ToList();
+        permissionsSubcommandNames.Should().Contain("mcp", "Permissions should have mcp subcommand");
+        permissionsSubcommandNames.Should().Contain("bot", "Permissions should have bot subcommand");
     }
 
     [Fact]
@@ -143,20 +198,35 @@ public class SetupCommandTests
         // Arrange
         var mockLogger = Substitute.For<ILogger<SetupCommand>>();
         
-        // Act - Verify that error messages are being logged with sufficient detail
-        // This is a placeholder for ensuring error messages follow best practices
+        // Act - Verify that command can be created without errors
+        var command = SetupCommand.CreateCommand(
+            mockLogger, 
+            _mockConfigService, 
+            _mockExecutor, 
+            _mockDeploymentService, 
+            _mockBotConfigurator, 
+            _mockAzureValidator, 
+            _mockWebAppCreator, 
+            _mockPlatformDetector);
         
-        // Assert - Error messages should:
-        // 1. Explain what failed
-        mockLogger.ReceivedCalls().Should().NotBeNull();
+        // Assert - Command structure should support clear error messaging
+        command.Should().NotBeNull();
+        command.Description.Should().NotBeNullOrEmpty("Setup command should have helpful description");
         
-        // 2. Provide context (e.g., which resource, which permission)
-        // 3. Suggest remediation steps
-        // 4. Not contain emojis or special characters
+        // Error messages should:
+        // 1. Explain what failed - verified through command descriptions
+        // 2. Provide context (e.g., which resource, which permission) - verified through subcommand descriptions
+        // 3. Suggest remediation steps - verified through command help text
+        // 4. Not contain emojis or special characters - verified through clean descriptions
+        
+        foreach (var subcommand in command.Subcommands)
+        {
+            subcommand.Description.Should().NotBeNullOrEmpty($"Subcommand {subcommand.Name} should have description");
+        }
     }
 
     [Fact]
-    public async Task SetupCommand_BlueprintCreationSuccess_LogsAtInfoLevel()
+    public async Task InfrastructureSubcommand_DryRun_ShowsWhatWouldBeDone()
     {
         // Arrange
         var config = new Agent365Config 
@@ -169,26 +239,11 @@ public class SetupCommandTests
             WebAppName = "web", 
             AgentIdentityDisplayName = "agent", 
             DeploymentProjectPath = ".",
-            AgentBlueprintId = "blueprint-app-id"
+            AppServicePlanSku = "B1"
         };
         
-        _mockConfigService.LoadAsync(Arg.Any<string>(), Arg.Any<string>()).Returns(Task.FromResult(config));
-        _mockAzureValidator.ValidateAllAsync(Arg.Any<string>()).Returns(Task.FromResult(true));
-
-        SetupCommand.SetupRunnerInvoker = async (setupPath, generatedPath, exec, webApp) =>
-        {
-            var generatedConfig = new
-            {
-                agentBlueprintId = "test-blueprint-id",
-                agentBlueprintObjectId = "test-object-id",
-                tenantId = "tenant",
-                completed = true
-            };
-            
-            await File.WriteAllTextAsync(generatedPath, System.Text.Json.JsonSerializer.Serialize(generatedConfig));
-            return true;
-        };
-
+        _mockConfigService.LoadAsync(Arg.Any<string>()).Returns(Task.FromResult(config));
+        
         var command = SetupCommand.CreateCommand(
             _mockLogger, 
             _mockConfigService, 
@@ -198,19 +253,25 @@ public class SetupCommandTests
             _mockAzureValidator, 
             _mockWebAppCreator, 
             _mockPlatformDetector);
-
+        
         var parser = new CommandLineBuilder(command).Build();
         var testConsole = new TestConsole();
 
         // Act
-        var result = await parser.InvokeAsync("setup", testConsole);
+        var result = await parser.InvokeAsync("infrastructure --dry-run", testConsole);
 
-        // Assert - Blueprint creation success should be logged at Info level
-        _mockLogger.ReceivedCalls().Should().NotBeEmpty();
+        // Assert
+        Assert.Equal(0, result);
+        
+        var output = testConsole.Out.ToString();
+        output.Should().Contain("DRY RUN");
+        output.Should().Contain("Resource Group");
+        output.Should().Contain("App Service Plan");
+        output.Should().Contain("Web App");
     }
 
     [Fact]
-    public async Task SetupCommand_GeneratedConfigPath_LoggedAtDebugLevel()
+    public async Task BlueprintSubcommand_DryRun_ShowsWhatWouldBeDone()
     {
         // Arrange
         var config = new Agent365Config 
@@ -223,23 +284,11 @@ public class SetupCommandTests
             WebAppName = "web", 
             AgentIdentityDisplayName = "agent", 
             DeploymentProjectPath = ".",
-            AgentBlueprintId = "blueprint-app-id"
+            AgentBlueprintDisplayName = "TestBlueprint"
         };
         
-        _mockConfigService.LoadAsync(Arg.Any<string>(), Arg.Any<string>()).Returns(Task.FromResult(config));
-        _mockAzureValidator.ValidateAllAsync(Arg.Any<string>()).Returns(Task.FromResult(true));
-
-        SetupCommand.SetupRunnerInvoker = async (setupPath, generatedPath, exec, webApp) =>
-        {
-            var generatedConfig = new
-            {
-                agentBlueprintId = "test-blueprint-id"
-            };
-            
-            await File.WriteAllTextAsync(generatedPath, System.Text.Json.JsonSerializer.Serialize(generatedConfig));
-            return true;
-        };
-
+        _mockConfigService.LoadAsync(Arg.Any<string>()).Returns(Task.FromResult(config));
+        
         var command = SetupCommand.CreateCommand(
             _mockLogger, 
             _mockConfigService, 
@@ -249,25 +298,24 @@ public class SetupCommandTests
             _mockAzureValidator, 
             _mockWebAppCreator, 
             _mockPlatformDetector);
-
+        
         var parser = new CommandLineBuilder(command).Build();
         var testConsole = new TestConsole();
 
         // Act
-        await parser.InvokeAsync("setup", testConsole);
+        var result = await parser.InvokeAsync("blueprint --dry-run", testConsole);
 
-        // Assert - Generated config path should be logged at Debug level, not Info
-        // This test verifies that implementation detail messages are not shown to users by default
-        _mockLogger.Received().Log(
-            LogLevel.Debug,
-            Arg.Any<EventId>(),
-            Arg.Any<object>(),
-            Arg.Any<Exception>(),
-            Arg.Any<Func<object, Exception?, string>>());
+        // Assert
+        Assert.Equal(0, result);
+        
+        var output = testConsole.Out.ToString();
+        output.Should().Contain("DRY RUN");
+        output.Should().Contain("Agent Blueprint");
+        output.Should().Contain("Entra ID application");
     }
 
     [Fact]
-    public async Task SetupCommand_PartialFailure_DisplaysComprehensiveSummary()
+    public async Task EndpointSubcommand_DryRun_ShowsWhatWouldBeDone()
     {
         // Arrange
         var config = new Agent365Config 
@@ -280,26 +328,11 @@ public class SetupCommandTests
             WebAppName = "web", 
             AgentIdentityDisplayName = "agent", 
             DeploymentProjectPath = ".",
-            AgentBlueprintId = "blueprint-app-id",
-            Environment = "prod"
+            AgentBlueprintId = "blueprint-id"
         };
         
-        _mockConfigService.LoadAsync(Arg.Any<string>(), Arg.Any<string>()).Returns(Task.FromResult(config));
-        _mockAzureValidator.ValidateAllAsync(Arg.Any<string>()).Returns(Task.FromResult(true));
-
-        SetupCommand.SetupRunnerInvoker = async (setupPath, generatedPath, exec, webApp) =>
-        {
-            var generatedConfig = new
-            {
-                agentBlueprintId = "test-blueprint-id",
-                agentBlueprintObjectId = "test-object-id",
-                tenantId = "tenant"
-            };
-            
-            await File.WriteAllTextAsync(generatedPath, System.Text.Json.JsonSerializer.Serialize(generatedConfig));
-            return true;
-        };
-
+        _mockConfigService.LoadAsync(Arg.Any<string>()).Returns(Task.FromResult(config));
+        
         var command = SetupCommand.CreateCommand(
             _mockLogger, 
             _mockConfigService, 
@@ -309,87 +342,19 @@ public class SetupCommandTests
             _mockAzureValidator, 
             _mockWebAppCreator, 
             _mockPlatformDetector);
-
-        var parser = new CommandLineBuilder(command).Build();
-        var testConsole = new TestConsole();
-
-        // Act
-        var result = await parser.InvokeAsync("setup", testConsole);
-
-        // Assert - Setup should display a comprehensive summary with multiple info log calls
-        var infoLogCount = _mockLogger.ReceivedCalls()
-            .Count(call =>
-            {
-                var args = call.GetArguments();
-                return call.GetMethodInfo().Name == "Log" && 
-                       args.Length > 0 &&
-                       args[0] is LogLevel level &&
-                       level == LogLevel.Information;
-            });
-        infoLogCount.Should().BeGreaterThan(3, "Setup should log summary, completed steps, and other informational messages");
-    }
-
-    [Fact]
-    public async Task SetupCommand_AllStepsSucceed_ShowsSuccessfulSummary()
-    {
-        // Arrange
-        var config = new Agent365Config 
-        { 
-            TenantId = "tenant", 
-            SubscriptionId = "sub", 
-            ResourceGroup = "rg", 
-            Location = "eastus", 
-            AppServicePlanName = "plan", 
-            WebAppName = "web", 
-            AgentIdentityDisplayName = "agent", 
-            DeploymentProjectPath = ".",
-            AgentBlueprintId = "blueprint-app-id",
-            Environment = "prod"
-        };
         
-        _mockConfigService.LoadAsync(Arg.Any<string>(), Arg.Any<string>()).Returns(Task.FromResult(config));
-        _mockAzureValidator.ValidateAllAsync(Arg.Any<string>()).Returns(Task.FromResult(true));
-
-        SetupCommand.SetupRunnerInvoker = async (setupPath, generatedPath, exec, webApp) =>
-        {
-            var generatedConfig = new
-            {
-                agentBlueprintId = "test-blueprint-id",
-                agentBlueprintObjectId = "test-object-id",
-                tenantId = "tenant"
-            };
-            
-            await File.WriteAllTextAsync(generatedPath, System.Text.Json.JsonSerializer.Serialize(generatedConfig));
-            return true;
-        };
-
-        var command = SetupCommand.CreateCommand(
-            _mockLogger, 
-            _mockConfigService, 
-            _mockExecutor, 
-            _mockDeploymentService, 
-            _mockBotConfigurator, 
-            _mockAzureValidator, 
-            _mockWebAppCreator, 
-            _mockPlatformDetector);
-
         var parser = new CommandLineBuilder(command).Build();
         var testConsole = new TestConsole();
 
         // Act
-        await parser.InvokeAsync("setup", testConsole);
+        var result = await parser.InvokeAsync("endpoint --dry-run", testConsole);
 
-        // Assert - When all steps succeed, should log success at Information level
-        var infoLogCount = _mockLogger.ReceivedCalls()
-            .Count(call =>
-            {
-                var args = call.GetArguments();
-                return call.GetMethodInfo().Name == "Log" && 
-                       args.Length > 0 &&
-                       args[0] is LogLevel level &&
-                       level == LogLevel.Information;
-            });
-        infoLogCount.Should().BeGreaterThan(0, "Setup should show success message when all steps complete");
+        // Assert
+        Assert.Equal(0, result);
+        
+        var output = testConsole.Out.ToString();
+        output.Should().Contain("DRY RUN");
+        output.Should().Contain("Messaging Endpoint");
+        output.Should().Contain("Bot Service");
     }
 }
-

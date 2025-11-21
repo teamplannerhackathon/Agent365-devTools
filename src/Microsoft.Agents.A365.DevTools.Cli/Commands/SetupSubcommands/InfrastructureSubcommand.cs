@@ -27,10 +27,8 @@ internal static class InfrastructureSubcommand
         CommandExecutor executor)
     {
         var command = new Command("infrastructure", 
-            "Create Azure infrastructure (Resource Group, App Service Plan, Web App, Managed Identity)\n" +
-            "Minimum required permissions: Azure Subscription Contributor or Owner\n" +
-            "Prerequisites: None (this is step 1)\n" +
-            "Next step: a365 setup blueprint");
+            "Create Azure infrastructure\n" +
+            "Minimum required permissions: Azure Subscription Contributor or Owner\n");
 
         var configOption = new Option<FileInfo>(
             ["--config", "-c"],
@@ -87,6 +85,9 @@ internal static class InfrastructureSubcommand
                 executor,
                 platformDetector,
                 CancellationToken.None);
+
+            logger.LogInformation("");
+            logger.LogInformation("Next steps: Run 'a365 setup blueprint' to create the agent blueprint");
 
         }, configOption, verboseOption, dryRunOption);
 
@@ -331,7 +332,7 @@ internal static class InfrastructureSubcommand
         }
 
         // Web App
-        var webShow = await executor.ExecuteAsync("az", $"webapp show -g {resourceGroup} -n {webAppName} --subscription {subscriptionId}", captureOutput: true);
+        var webShow = await executor.ExecuteAsync("az", $"webapp show -g {resourceGroup} -n {webAppName} --subscription {subscriptionId}", captureOutput: true, suppressErrorLogging: true);
         if (!webShow.Success)
         {
             var runtime = GetRuntimeForPlatform(platform);

@@ -118,14 +118,19 @@ public class BotConfigurator : IBotConfigurator
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    _logger.LogError("Failed to call create endpoint. Status: {Status}", response.StatusCode);
+                    // Use Console.Error to ensure error is visible to user (bypasses Serilog filtering)
+                    Console.Error.WriteLine($"Failed to call create endpoint. Status: {response.StatusCode}");
+                    
                     var errorContent = await response.Content.ReadAsStringAsync();
                     if (errorContent.Contains("Failed to provision bot resource via Azure Management API. Status: BadRequest", StringComparison.OrdinalIgnoreCase))
                     {
-                        _logger.LogError("Please ensure that the Agent 365 CLI is supported in the selected region ('{Location}') and that your web app name ('{EndpointName}') is globally unique.", location, endpointName);
+                        Console.Error.WriteLine($"Please ensure that the Agent 365 CLI is supported in the selected region ('{location}') and that your web app name ('{endpointName}') is globally unique.");
+                        _logger.LogError("Failed to call create endpoint. Status: {Status}. Region: {Location}, EndpointName: {EndpointName}", response.StatusCode, location, endpointName);
                         return false;
                     }
-                    _logger.LogError("Error response: {Error}", errorContent);
+                    
+                    Console.Error.WriteLine($"Error response: {errorContent}");
+                    _logger.LogError("Failed to call create endpoint. Status: {Status}, Error: {Error}", response.StatusCode, errorContent);
                     return false;
                 }
 
@@ -239,9 +244,13 @@ public class BotConfigurator : IBotConfigurator
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    _logger.LogError("Failed to call delete endpoint. Status: {Status}", response.StatusCode);
+                    // Use Console.Error to ensure error is visible to user (bypasses Serilog filtering)
+                    Console.Error.WriteLine($"Failed to call delete endpoint. Status: {response.StatusCode}");
+                    
                     var errorContent = await response.Content.ReadAsStringAsync();
-                    _logger.LogError("Error response: {Error}", errorContent);
+                    Console.Error.WriteLine($"Error response: {errorContent}");
+                    
+                    _logger.LogError("Failed to call delete endpoint. Status: {Status}, Error: {Error}", response.StatusCode, errorContent);
                     return false;
                 }
 

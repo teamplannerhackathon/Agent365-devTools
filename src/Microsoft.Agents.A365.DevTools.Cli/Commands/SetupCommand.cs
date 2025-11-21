@@ -14,9 +14,6 @@ namespace Microsoft.Agents.A365.DevTools.Cli.Commands
     /// </summary>
     public class SetupCommand
     {
-        // Test hook for unit testing
-        public static Func<string, string, CommandExecutor, AzureWebAppCreator, Task<bool>>? SetupRunnerInvoker { get; set; }
-
         public static Command CreateCommand(
             ILogger<SetupCommand> logger,
             IConfigService configService,

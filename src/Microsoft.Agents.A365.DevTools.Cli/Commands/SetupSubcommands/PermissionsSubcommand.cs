@@ -42,9 +42,7 @@ internal static class PermissionsSubcommand
     {
         var command = new Command("mcp", 
             "Configure MCP server OAuth2 grants and inheritable permissions\n" +
-            "Minimum required permissions: Global Administrator\n\n" +
-            "Prerequisites: Blueprint must exist (run 'a365 setup blueprint' first)\n" +
-            "Next step: a365 setup permissions bot");
+            "Minimum required permissions: Global Administrator\n\n");
 
         var configOption = new Option<FileInfo>(
             ["--config", "-c"],
