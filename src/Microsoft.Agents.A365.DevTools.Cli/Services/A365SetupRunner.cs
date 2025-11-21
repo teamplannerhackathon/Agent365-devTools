@@ -3,19 +3,16 @@
 
 using Azure.Core;
 using Azure.Identity;
-using System.Linq;
 using Microsoft.Agents.A365.DevTools.Cli.Constants;
 using Microsoft.Agents.A365.DevTools.Cli.Exceptions;
 using Microsoft.Agents.A365.DevTools.Cli.Services.Helpers;
 using Microsoft.Extensions.Logging;
 using Microsoft.Graph;
-using Microsoft.Graph.Models;
 using System.Net.Http.Headers;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using static System.Formats.Asn1.AsnWriter;
 
 namespace Microsoft.Agents.A365.DevTools.Cli.Services;
 

@@ -49,29 +49,44 @@ internal static class InfrastructureSubcommand
 
         command.SetHandler(async (config, verbose, dryRun) =>
         {
-            var setupConfig = await configService.LoadAsync(config.FullName);
-
             if (dryRun)
             {
+                var dryRunConfig = await configService.LoadAsync(config.FullName);
+
                 logger.LogInformation("DRY RUN: Create Azure Infrastructure");
                 logger.LogInformation("Would create the following resources:");
-                logger.LogInformation("  - Resource Group: {ResourceGroup}", setupConfig.ResourceGroup);
-                logger.LogInformation("  - Location: {Location}", setupConfig.Location);
-                logger.LogInformation("  - App Service Plan: {PlanName} (SKU: {Sku})", 
-                    setupConfig.AppServicePlanName, setupConfig.AppServicePlanSku);
-                logger.LogInformation("  - Web App: {WebAppName}", setupConfig.WebAppName);
+                logger.LogInformation("  - Resource Group: {ResourceGroup}", dryRunConfig.ResourceGroup);
+                logger.LogInformation("  - Location: {Location}", dryRunConfig.Location);
+                logger.LogInformation("  - App Service Plan: {PlanName} (SKU: {Sku})",
+                    dryRunConfig.AppServicePlanName, dryRunConfig.AppServicePlanSku);
+                logger.LogInformation("  - Web App: {WebAppName}", dryRunConfig.WebAppName);
                 logger.LogInformation("  - Managed Service Identity: Enabled");
                 
                 // Detect platform (even in dry-run for informational purposes)
-                if (!string.IsNullOrWhiteSpace(setupConfig.DeploymentProjectPath))
+                if (!string.IsNullOrWhiteSpace(dryRunConfig.DeploymentProjectPath))
                 {
-                    var detectedPlatform = platformDetector.Detect(setupConfig.DeploymentProjectPath);
+                    var detectedPlatform = platformDetector.Detect(dryRunConfig.DeploymentProjectPath);
                     var detectedRuntime = GetRuntimeForPlatform(detectedPlatform);
                     logger.LogInformation("  - Detected Platform: {Platform}", detectedPlatform);
                     logger.LogInformation("  - Runtime: {Runtime}", detectedRuntime);
                 }
                 
                 return;
+            }
+
+            // Load configuration - ConfigService automatically finds generated config in same directory
+            var setupConfig = await configService.LoadAsync(config.FullName);
+            if (setupConfig.NeedDeployment)
+            {
+                // Validate Azure CLI authentication, subscription, and environment
+                if (!await azureValidator.ValidateAllAsync(setupConfig.SubscriptionId))
+                {
+                    Environment.Exit(1);
+                }
+            }
+            else
+            {
+                logger.LogInformation("NeedDeployment=false – skipping Azure subscription validation.");
             }
 
             var generatedConfigPath = Path.Combine(

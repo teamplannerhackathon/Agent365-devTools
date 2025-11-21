@@ -99,16 +99,6 @@ internal static class EndpointSubcommand
     {
         var setupConfig = await configService.LoadAsync(configPath);
 
-        if (string.IsNullOrWhiteSpace(setupConfig.AgentBlueprintId))
-        {
-            throw new InvalidOperationException("Blueprint ID not found. Run 'a365 setup blueprint' first.");
-        }
-
-        if (string.IsNullOrWhiteSpace(setupConfig.WebAppName))
-        {
-            throw new InvalidOperationException("Web App Name not found. Run 'a365 setup infrastructure' first.");
-        }
-
         logger.LogInformation("Registering blueprint messaging endpoint...");
         logger.LogInformation("");
 

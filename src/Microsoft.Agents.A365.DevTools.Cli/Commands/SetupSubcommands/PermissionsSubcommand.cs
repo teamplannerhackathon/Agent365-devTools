@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 using Microsoft.Agents.A365.DevTools.Cli.Constants;
+using Microsoft.Agents.A365.DevTools.Cli.Exceptions;
 using Microsoft.Agents.A365.DevTools.Cli.Helpers;
 using Microsoft.Agents.A365.DevTools.Cli.Services;
 using Microsoft.Extensions.Logging;
@@ -180,12 +181,6 @@ internal static class PermissionsSubcommand
 
         try
         {
-            if (string.IsNullOrWhiteSpace(setupConfig.AgentBlueprintId))
-            {
-                logger.LogError("Blueprint ID not found. Run 'a365 setup blueprint' first.");
-                Environment.Exit(1);
-            }
-
             // Read scopes from toolingManifest.json
             var manifestPath = Path.Combine(setupConfig.DeploymentProjectPath ?? string.Empty, "toolingManifest.json");
             var toolingScopes = await ManifestHelper.GetRequiredScopesAsync(manifestPath);
@@ -238,12 +233,11 @@ internal static class PermissionsSubcommand
         {
             if (string.IsNullOrWhiteSpace(setupConfig.AgentBlueprintId))
             {
-                logger.LogError("Blueprint ID not found. Run 'a365 setup blueprint' first.");
-                Environment.Exit(1);
+                throw new SetupValidationException("AgentBlueprintId is required.");
             }
 
             var blueprintSpObjectId = await graphService.LookupServicePrincipalByAppIdAsync(setupConfig.TenantId, setupConfig.AgentBlueprintId)
-                ?? throw new InvalidOperationException($"Blueprint Service Principal not found for appId {setupConfig.AgentBlueprintId}");
+                ?? throw new SetupValidationException($"Blueprint Service Principal not found for appId {setupConfig.AgentBlueprintId}");
 
             // Ensure Messaging Bot API SP exists
             var botApiResourceSpObjectId = await graphService.EnsureServicePrincipalForAppIdAsync(
