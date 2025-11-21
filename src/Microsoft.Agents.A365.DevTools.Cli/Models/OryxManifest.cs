@@ -19,16 +19,14 @@ public class OryxManifest
     /// </summary>
     public async Task WriteToFileAsync(string filePath)
     {
-        var buildSection = BuildRequired ? $@"[build]
-platform = ""{Platform}""
-version = ""{Version}""
-build-command = ""{BuildCommand}""
+        var buildSection = BuildRequired ? "[build]\n" +
+            $@"platform = ""{Platform}""" + "\n" +
+            $@"version = ""{Version}""" + "\n" +
+            $@"build-command = ""{BuildCommand}""" +"\n\n" : "";
 
-" : "";
+        var content = $@"{buildSection}[run]" + "\n" +
+            $@"command = ""{Command}""";
 
-        var content = $@"{buildSection}[run]
-command = ""{Command}""
-";
         await File.WriteAllTextAsync(filePath, content);
     }
 }
