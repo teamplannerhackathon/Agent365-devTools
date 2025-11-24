@@ -349,16 +349,7 @@ public sealed class A365SetupRunner
             }
 
             // App Service plan
-            var planShow = await _executor.ExecuteAsync("az", $"appservice plan show -g {resourceGroup} -n {planName} --subscription {subscriptionId}", captureOutput: true, suppressErrorLogging: true);
-            if (planShow.Success)
-            {
-                _logger.LogInformation("App Service plan already exists: {Plan} (skipping creation)", planName);
-            }
-            else
-            {
-                _logger.LogInformation("Creating App Service plan {Plan}", planName);
-                await AzWarnAsync($"appservice plan create -g {resourceGroup} -n {planName} --sku {planSku} --is-linux --subscription {subscriptionId}", "Create App Service plan");
-            }
+            await EnsureAppServicePlanExistsAsync(resourceGroup, planName, planSku, subscriptionId);
 
             // Web App
             var webShow = await _executor.ExecuteAsync("az", $"webapp show -g {resourceGroup} -n {webAppName} --subscription {subscriptionId}", captureOutput: true);
@@ -1791,6 +1782,32 @@ public sealed class A365SetupRunner
         }
 
         return needDeployment;
+    }
+    
+    /// <summary>
+    /// Ensures that an App Service Plan exists, creating it if necessary and verifying its existence.
+    /// </summary>
+    internal async Task EnsureAppServicePlanExistsAsync(string resourceGroup, string planName, string planSku, string subscriptionId)
+    {
+        var planShow = await _executor.ExecuteAsync("az", $"appservice plan show -g {resourceGroup} -n {planName} --subscription {subscriptionId}", captureOutput: true, suppressErrorLogging: true);
+        if (planShow.Success)
+        {
+            _logger.LogInformation("App Service plan already exists: {Plan} (skipping creation)", planName);
+        }
+        else
+        {
+            _logger.LogInformation("Creating App Service plan {Plan}", planName);
+            await AzWarnAsync($"appservice plan create -g {resourceGroup} -n {planName} --sku {planSku} --is-linux --subscription {subscriptionId}", "Create App Service plan");
+            
+            // Verify the plan was created successfully
+            var verifyPlan = await _executor.ExecuteAsync("az", $"appservice plan show -g {resourceGroup} -n {planName} --subscription {subscriptionId}", captureOutput: true, suppressErrorLogging: true);
+            if (!verifyPlan.Success)
+            {
+                _logger.LogError("ERROR: App Service plan creation failed. The plan '{Plan}' does not exist.", planName);
+                throw new InvalidOperationException($"Failed to create App Service plan '{planName}'. This may be due to quota limits or insufficient permissions. Setup cannot continue.");
+            }
+            _logger.LogInformation("App Service plan created successfully: {Plan}", planName);
+        }
     }
     
     /// <summary>
