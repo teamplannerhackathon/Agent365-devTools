@@ -8,7 +8,6 @@ using Microsoft.Extensions.Logging;
 using System.CommandLine;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Threading;
 
 namespace Microsoft.Agents.A365.DevTools.Cli.Commands.SetupSubcommands;
 
