@@ -176,11 +176,14 @@ def detect_points(event, cfg):
     action = event.get('action')
     review = event.get('review', {})
     comment = event.get('comment', {})
-    
+
+    # Note: The review and comment bodies are user-controlled content from the GitHub API.
+    # No sanitization is performed here because the current usage only checks for keywords.
+    # If this code is extended to process or display these bodies, input validation should be added.
     review_body = (review.get('body') or '').lower()
     review_state = (review.get('state') or '').lower()
     comment_body = (comment.get('body') or '').lower()
-    
+
     user, source = extract_user(event)
     if not user:
         print("ERROR: Unable to extract user from event. Checked review.user, comment.user, and sender fields.")
