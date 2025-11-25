@@ -588,7 +588,15 @@ public class GraphApiService
     #endregion
     
     /// <summary>
-    /// Delete an Agent Blueprint application using the special agentIdentityBlueprint endpoint
+    /// Delete an Agent Blueprint application using the special agentIdentityBlueprint endpoint.
+    /// 
+    /// SPECIAL AUTHENTICATION REQUIREMENTS:
+    /// Agent Blueprint deletion requires the AgentIdentityBlueprint.ReadWrite.All delegated permission scope.
+    /// This scope is not available through Azure CLI tokens, so we use interactive authentication via
+    /// the token provider (same authentication method used during blueprint creation in the setup command).
+    /// 
+    /// This method uses the GraphDeleteAsync helper but with special scopes - the duplication is intentional
+    /// because blueprint operations require elevated permissions that standard Graph operations don't need.
     /// </summary>
     /// <param name="tenantId">The tenant ID for authentication</param>
     /// <param name="blueprintId">The blueprint application ID (object ID or app ID)</param>
@@ -603,56 +611,40 @@ public class GraphApiService
         {
             _logger.LogInformation("Deleting agent blueprint application: {BlueprintId}", blueprintId);
             
-            // Agent Blueprint deletion requires AgentIdentityBlueprint.ReadWrite.All delegated permission
-            // Azure CLI tokens don't support this scope, so we must use interactive authentication
+            // Agent Blueprint deletion requires special delegated permission scope
             var requiredScopes = new[] { "AgentIdentityBlueprint.ReadWrite.All" };
             
-            string? token = null;
-            
-            if (_tokenProvider != null)
+            if (_tokenProvider == null)
             {
-                _logger.LogInformation("Acquiring access token with AgentIdentityBlueprint.ReadWrite.All scope...");
-                _logger.LogInformation("A browser window will open for authentication.");
-                token = await _tokenProvider.GetMgGraphAccessTokenAsync(tenantId, requiredScopes, useDeviceCode: false, cancellationToken);
-            }
-            
-            if (string.IsNullOrWhiteSpace(token))
-            {
-                _logger.LogError("Failed to acquire access token with required scope");
-                _logger.LogError("Agent Blueprint deletion requires interactive authentication with AgentIdentityBlueprint.ReadWrite.All permission");
+                _logger.LogError("Token provider is not configured. Agent Blueprint deletion requires interactive authentication.");
+                _logger.LogError("Please ensure the GraphApiService is initialized with a token provider.");
                 return false;
             }
             
-            // Set authorization header with the token that has the correct scope
-            _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-            _httpClient.DefaultRequestHeaders.Remove("ConsistencyLevel");
-            _httpClient.DefaultRequestHeaders.TryAddWithoutValidation("ConsistencyLevel", "eventual");
+            _logger.LogInformation("Acquiring access token with AgentIdentityBlueprint.ReadWrite.All scope...");
+            _logger.LogInformation("A browser window will open for authentication.");
             
             // Use the special agentIdentityBlueprint endpoint for deletion
             var deletePath = $"/beta/applications/{blueprintId}/microsoft.graph.agentIdentityBlueprint";
-            var url = deletePath.StartsWith("http", StringComparison.OrdinalIgnoreCase)
-                ? deletePath
-                : $"https://graph.microsoft.com{deletePath}";
-
-            using var req = new HttpRequestMessage(HttpMethod.Delete, url);
-            using var resp = await _httpClient.SendAsync(req, cancellationToken);
-
-            // 404 can be considered success for idempotent deletes
-            if ((int)resp.StatusCode == 404)
+            
+            // Use GraphDeleteAsync with the special scopes required for blueprint operations
+            var success = await GraphDeleteAsync(
+                tenantId,
+                deletePath,
+                cancellationToken,
+                treatNotFoundAsSuccess: true,
+                scopes: requiredScopes);
+            
+            if (success)
             {
-                _logger.LogInformation("Agent blueprint not found (may have been already deleted)");
-                return true;
+                _logger.LogInformation("Agent blueprint application deleted successfully");
             }
-
-            if (!resp.IsSuccessStatusCode)
+            else
             {
-                var body = await resp.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogError("Graph DELETE {Url} failed {Code} {Reason}: {Body}", url, (int)resp.StatusCode, resp.ReasonPhrase, body);
-                return false;
+                _logger.LogError("Failed to delete agent blueprint application");
             }
             
-            _logger.LogInformation("Agent blueprint application deleted successfully");
-            return true;
+            return success;
         }
         catch (Exception ex)
         {
@@ -757,9 +749,10 @@ public class GraphApiService
         string tenantId,
         string relativePath,
         CancellationToken ct = default,
-        bool treatNotFoundAsSuccess = true)
+        bool treatNotFoundAsSuccess = true,
+        IEnumerable<string>? scopes = null)
     {
-        if (!await EnsureGraphHeadersAsync(tenantId, ct)) return false;
+        if (!await EnsureGraphHeadersAsync(tenantId, ct, scopes)) return false;
 
         var url = relativePath.StartsWith("http", StringComparison.OrdinalIgnoreCase)
             ? relativePath

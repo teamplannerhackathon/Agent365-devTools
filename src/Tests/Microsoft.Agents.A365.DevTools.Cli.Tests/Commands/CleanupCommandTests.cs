@@ -18,6 +18,7 @@ public class CleanupCommandTests
     private readonly IBotConfigurator _mockBotConfigurator;
     private readonly CommandExecutor _mockExecutor;
     private readonly GraphApiService _graphApiService;
+    private readonly IMicrosoftGraphTokenProvider _mockTokenProvider;
 
     public CleanupCommandTests()
     {
@@ -32,9 +33,20 @@ public class CleanupCommandTests
             .Returns(Task.FromResult(new Microsoft.Agents.A365.DevTools.Cli.Services.CommandResult { ExitCode = 0, StandardOutput = string.Empty, StandardError = string.Empty }));
         _mockBotConfigurator = Substitute.For<IBotConfigurator>();
         
-        // Create a real GraphApiService instance with mocked logger for testing
+        // Create a mock token provider for GraphApiService
+        _mockTokenProvider = Substitute.For<IMicrosoftGraphTokenProvider>();
+        
+        // Configure token provider to return a test token
+        _mockTokenProvider.GetMgGraphAccessTokenAsync(
+            Arg.Any<string>(), 
+            Arg.Any<IEnumerable<string>>(), 
+            Arg.Any<bool>(), 
+            Arg.Any<CancellationToken>())
+            .Returns("test-token");
+        
+        // Create a real GraphApiService instance with mocked dependencies
         var mockGraphLogger = Substitute.For<ILogger<GraphApiService>>();
-        _graphApiService = new GraphApiService(mockGraphLogger, _mockExecutor);
+        _graphApiService = new GraphApiService(mockGraphLogger, _mockExecutor, null, _mockTokenProvider);
     }
 
     [Fact(Skip = "Test requires interactive confirmation - cleanup commands now enforce user confirmation instead of --force")]
