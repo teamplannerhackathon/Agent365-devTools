@@ -306,6 +306,13 @@ public class Agent365Config
     [JsonPropertyName("agentBlueprintClientSecret")]
     public string? AgentBlueprintClientSecret { get; set; }
 
+    /// <summary>
+    /// Client secret for the agent blueprint application.
+    /// NOTE: This is sensitive data - consider using Azure Key Vault in production.
+    /// </summary>
+    [JsonPropertyName("agentBlueprintClientSecretProtected")]
+    public bool AgentBlueprintClientSecretProtected { get; set; }
+
     #endregion
 
     #region Bot State

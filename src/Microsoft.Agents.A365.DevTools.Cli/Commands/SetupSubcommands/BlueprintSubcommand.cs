@@ -220,7 +220,12 @@ internal static class BlueprintSubcommand
             ["displayName"] = setupConfig.AgentBlueprintDisplayName,
             ["servicePrincipalId"] = blueprintResult.servicePrincipalId,
             ["identifierUri"] = $"api://{blueprintAppId}",
-            ["tenantId"] = setupConfig.TenantId
+            ["tenantId"] = setupConfig.TenantId,
+            ["consentUrlGraph"] = generatedConfig["consentUrlGraph"]?.DeepClone(),
+            ["consentUrlConnectivity"] = generatedConfig["consentUrlConnectivity"]?.DeepClone(),
+            ["consent1Granted"] = generatedConfig["consent1Granted"]?.DeepClone(),
+            ["consent2Granted"] = generatedConfig["consent2Granted"]?.DeepClone(),
+
         };
 
         await File.WriteAllTextAsync(generatedConfigPath, camelCaseConfig.ToJsonString(new JsonSerializerOptions { WriteIndented = true }), cancellationToken);
@@ -787,8 +792,9 @@ internal static class BlueprintSubcommand
 
             var protectedSecret = ProtectSecret(secretTextNode.GetValue<string>(), logger);
 
+            var isProtected = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
             generatedConfig["agentBlueprintClientSecret"] = protectedSecret;
-            generatedConfig["agentBlueprintClientSecretProtected"] = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+            generatedConfig["agentBlueprintClientSecretProtected"] = isProtected;
 
             await File.WriteAllTextAsync(
                 generatedConfigPath,
@@ -796,11 +802,11 @@ internal static class BlueprintSubcommand
                 ct);
 
             logger.LogInformation("Client secret created successfully!");
-            logger.LogInformation("  - Secret stored in generated config (encrypted: {IsProtected})", RuntimeInformation.IsOSPlatform(OSPlatform.Windows));
+            logger.LogInformation($"  - Secret stored in generated config (encrypted: {isProtected})");
             logger.LogWarning("IMPORTANT: The client secret has been stored in {Path}", generatedConfigPath);
             logger.LogWarning("Keep this file secure and do not commit it to source control!");
 
-            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            if (!isProtected)
             {
                 logger.LogWarning("WARNING: Secret encryption is only available on Windows. The secret is stored in plaintext.");
                 logger.LogWarning("Consider using environment variables or Azure Key Vault for production deployments.");
