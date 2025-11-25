@@ -18,14 +18,14 @@ jobs:
       (github.event_name == 'issue_comment' && github.event.issue.pull_request != null)
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: main
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.x'
 
@@ -34,16 +34,33 @@ jobs:
           pip install PyYAML
 
       - name: Assign points
+        id: assign_points
         run: |
+          set +e
           python scripts/assign_points.py
+          exit_code=$?
+          echo "exit_code=$exit_code" >> $GITHUB_OUTPUT
+          
+          # Exit codes:
+          # 0 = Success (points awarded)
+          # 2 = No-op (no points, but not an error)
+          # 1 or other = Actual error
+          
+          if [ $exit_code -eq 0 ] || [ $exit_code -eq 2 ]; then
+            exit 0
+          else
+            exit $exit_code
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update leaderboard
+        if: steps.assign_points.outputs.exit_code == '0'
         run: |
           python scripts/update_leaderboard.py
 
       - name: Commit and push leaderboard
+        if: steps.assign_points.outputs.exit_code == '0'
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"

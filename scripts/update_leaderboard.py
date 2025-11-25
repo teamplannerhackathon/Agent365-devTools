@@ -25,7 +25,9 @@ def load_leaderboard():
     
     try:
         with open(LEADERBOARD_JSON, 'r', encoding='utf-8') as f:
-            leaderboard = json.load(f)
+            data = json.load(f)
+            # Filter out 'top' key and ensure only valid user entries
+            leaderboard = {k: v for k, v in data.items() if k != 'top' and isinstance(v, (int, float))}
     except json.JSONDecodeError as e:
         print(f"ERROR: Invalid JSON in leaderboard file: {e}", file=sys.stderr)
         sys.exit(1)

@@ -49,6 +49,14 @@ def load_config():
         print("Expected format: { points: { basic_review: 5, ... } }", file=sys.stderr)
         sys.exit(1)
     
+    # Validate required keys
+    required_keys = ['basic_review', 'detailed_review', 'performance_improvement', 'approve_pr']
+    missing_keys = [key for key in required_keys if key not in config['points']]
+    if missing_keys:
+        print(f"ERROR: Missing required keys in config: {', '.join(missing_keys)}", file=sys.stderr)
+        print(f"Required keys: {', '.join(required_keys)}", file=sys.stderr)
+        sys.exit(1)
+    
     return config
 
 def load_event():
@@ -228,10 +236,12 @@ def update_leaderboard(user, points):
     if os.path.exists(LEADERBOARD_FILE):
         with open(LEADERBOARD_FILE, 'r', encoding='utf-8') as f:
             try:
-                leaderboard = json.load(f)
+                data = json.load(f)
+                # Filter out 'top' key to prevent unbounded growth
+                leaderboard = {k: v for k, v in data.items() if k != 'top' and isinstance(v, (int, float))}
             except json.JSONDecodeError:
                 leaderboard = {}
-    
+
     leaderboard[user] = leaderboard.get(user, 0) + points
     print(f"Updated {user}: {leaderboard[user]} total points (awarded +{points})")
     
@@ -256,8 +266,10 @@ def main():
     points, user = detect_points(event, cfg)
 
     # Extract unique ID for duplicate prevention
-    event_id = event.get('review', {}).get('id') or event.get('comment', {}).get('id')
-    if not event_id:
+    event_id = event.get('review', {}).get('id')
+    if event_id is None:
+        event_id = event.get('comment', {}).get('id')
+    if event_id is None:
         print("No unique ID found in event. Skipping duplicate check.")
         sys.exit(2)  # Exit code 2 = no-op (not an error)
 
