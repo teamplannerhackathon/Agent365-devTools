@@ -156,7 +156,11 @@ internal static class AllSubcommand
                         azureValidator,
                         logger,
                         skipInfrastructure,
-                        true);
+                        true,
+                        configService,
+                        botConfigurator,
+                        platformDetector
+                        );
 
                     setupResults.BlueprintCreated = blueprintCreated;
 
@@ -243,30 +247,6 @@ internal static class AllSubcommand
                     setupResults.BotApiPermissionsConfigured = false;
                     setupResults.Errors.Add($"Bot API Permissions: {botPermEx.Message}");
                     logger.LogWarning("Setup will continue, but Bot API permissions must be configured manually");
-                }
-
-                // Step 5: Register endpoint and sync
-                logger.LogInformation("");
-                logger.LogInformation("Step 5:");
-                logger.LogInformation("");
-
-                try
-                {
-                    await EndpointSubcommand.RegisterEndpointAndSyncAsync(
-                        config.FullName,
-                        logger,
-                        configService,
-                        botConfigurator,
-                        platformDetector);
-
-                    setupResults.MessagingEndpointRegistered = true;
-                    logger.LogInformation("Blueprint messaging endpoint registered successfully");
-                }
-                catch (Exception endpointEx)
-                {
-                    setupResults.MessagingEndpointRegistered = false;
-                    setupResults.Errors.Add($"Messaging endpoint: {endpointEx.Message}");
-                    logger.LogError("Failed to register messaging endpoint: {Message}", endpointEx.Message);
                 }
 
                 // Display verification info and summary
