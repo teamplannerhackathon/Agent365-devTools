@@ -283,7 +283,7 @@ internal static class PermissionsSubcommand
                 throw new InvalidOperationException($"Failed to set inheritable permissions for Messaging Bot API: {botApiErr}");
             }
 
-            // Ensure Messaging Bot API SP exists
+            // Ensure Observability API SP exists
             var observabilityApiResourceSpObjectId = await graphService.EnsureServicePrincipalForAppIdAsync(
                 setupConfig.TenantId,
                 ConfigConstants.ObservabilityApiAppId);
