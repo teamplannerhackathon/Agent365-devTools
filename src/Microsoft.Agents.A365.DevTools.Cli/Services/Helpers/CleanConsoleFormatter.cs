@@ -15,12 +15,16 @@ namespace Microsoft.Agents.A365.DevTools.Cli.Services.Helpers;
 /// </summary>
 public sealed class CleanConsoleFormatter : ConsoleFormatter
 {
-    private readonly SimpleConsoleFormatterOptions _options;
-
-    public CleanConsoleFormatter(Microsoft.Extensions.Options.IOptionsMonitor<SimpleConsoleFormatterOptions> options) 
+    public CleanConsoleFormatter() 
         : base("clean")
     {
-        _options = options.CurrentValue;
+    }
+
+    // Constructor required by AddConsoleFormatter
+    public CleanConsoleFormatter(Microsoft.Extensions.Options.IOptionsMonitor<ConsoleFormatterOptions> options)
+        : base("clean")
+    {
+        // Options not used - formatter has fixed behavior
     }
 
     public override void Write<TState>(
@@ -34,40 +38,66 @@ public sealed class CleanConsoleFormatter : ConsoleFormatter
             return;
         }
 
+        // Check if we're writing to actual console (supports colors)
+        bool isConsole = !Console.IsOutputRedirected;
+
         // Azure CLI pattern: red for errors, yellow for warnings, no color for info
         switch (logEntry.LogLevel)
         {
             case LogLevel.Error:
             case LogLevel.Critical:
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.Write("ERROR: ");
-                Console.Write(message);
-                Console.ResetColor();
-                Console.WriteLine();
+                if (isConsole)
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.Write("ERROR: ");
+                    Console.Write(message);
+                    Console.ResetColor();
+                    Console.WriteLine();
+                }
+                else
+                {
+                    textWriter.Write("ERROR: ");
+                    textWriter.WriteLine(message);
+                }
                 break;
             case LogLevel.Warning:
-                Console.ForegroundColor = ConsoleColor.Yellow;
-                Console.Write("WARNING: ");
-                Console.Write(message);
-                Console.ResetColor();
-                Console.WriteLine();
+                if (isConsole)
+                {
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.Write("WARNING: ");
+                    Console.Write(message);
+                    Console.ResetColor();
+                    Console.WriteLine();
+                }
+                else
+                {
+                    textWriter.Write("WARNING: ");
+                    textWriter.WriteLine(message);
+                }
                 break;
             default:
-                Console.WriteLine(message);
+                textWriter.WriteLine(message);
                 break;
         }
 
         // If there's an exception, include it (for debugging)
         if (logEntry.Exception != null)
         {
-            Console.ForegroundColor = logEntry.LogLevel switch
+            if (isConsole)
             {
-                LogLevel.Error or LogLevel.Critical => ConsoleColor.Red,
-                LogLevel.Warning => ConsoleColor.Yellow,
-                _ => Console.ForegroundColor
-            };
-            Console.WriteLine(logEntry.Exception.ToString());
-            Console.ResetColor();
+                Console.ForegroundColor = logEntry.LogLevel switch
+                {
+                    LogLevel.Error or LogLevel.Critical => ConsoleColor.Red,
+                    LogLevel.Warning => ConsoleColor.Yellow,
+                    _ => Console.ForegroundColor
+                };
+                Console.WriteLine(logEntry.Exception);
+                Console.ResetColor();
+            }
+            else
+            {
+                textWriter.WriteLine(logEntry.Exception);
+            }
         }
     }
 }

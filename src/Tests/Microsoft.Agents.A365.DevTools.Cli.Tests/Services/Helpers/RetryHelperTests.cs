@@ -240,4 +240,27 @@ public class RetryHelperTests
         result.Should().Be(expectedTuple);
         callCount.Should().Be(1);
     }
+
+    [Fact]
+    public async Task ExecuteWithRetryAsync_ShouldRetryAlwaysTrue_CallsExactlyMaxRetries()
+    {
+        // Arrange
+        var callCount = 0;
+        const int maxRetries = 5;
+
+        // Act
+        var result = await _retryHelper.ExecuteWithRetryAsync(
+            ct =>
+            {
+                callCount++;
+                return Task.FromResult($"attempt_{callCount}");
+            },
+            result => true,
+            maxRetries: maxRetries,
+            baseDelaySeconds: 0);
+
+        // Assert
+        callCount.Should().Be(maxRetries, "operation should be called exactly maxRetries times, not maxRetries + 1");
+        result.Should().Be($"attempt_{maxRetries}");
+    }
 }

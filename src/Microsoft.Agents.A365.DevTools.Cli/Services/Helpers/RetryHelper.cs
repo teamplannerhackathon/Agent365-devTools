@@ -29,16 +29,17 @@ public class RetryHelper
     {
         int attempt = 0;
         Exception? lastException = null;
+        T? lastResult = default;
 
         while (attempt < maxRetries)
         {
             try
             {
-                var result = await operation(cancellationToken);
+                lastResult = await operation(cancellationToken);
 
-                if (!shouldRetry(result))
+                if (!shouldRetry(lastResult))
                 {
-                    return result;
+                    return lastResult;
                 }
 
                 if (attempt < maxRetries - 1)
@@ -77,7 +78,7 @@ public class RetryHelper
             throw lastException;
         }
 
-        return await operation(cancellationToken);
+        return lastResult!;
     }
 
     /// <summary>

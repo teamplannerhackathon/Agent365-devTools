@@ -351,16 +351,7 @@ internal static class BlueprintSubcommand
         {
             logger.LogInformation("Creating Agent Blueprint using Microsoft Graph SDK...");
 
-            GraphServiceClient graphClient;
-            try
-            {
-                graphClient = await GetAuthenticatedGraphClientAsync(logger, tenantId, ct);
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning(ex, "Failed to get authenticated Graph client: {Message}", ex.Message);
-                return (false, null, null, null);
-            }
+            using GraphServiceClient graphClient = await GetAuthenticatedGraphClientAsync(logger, tenantId, ct);
 
             // Get current user for sponsors field (mimics PowerShell script behavior)
             string? sponsorUserId = null;
@@ -702,7 +693,7 @@ internal static class BlueprintSubcommand
         logger.LogInformation("");
 
         // Use InteractiveGraphAuthService to get proper authentication
-        var cleanLoggerFactory = LoggerFactoryHelper.CreateCleanLoggerFactory();
+        using var cleanLoggerFactory = LoggerFactoryHelper.CreateCleanLoggerFactory();
         var interactiveAuth = new InteractiveGraphAuthService(
             cleanLoggerFactory.CreateLogger<InteractiveGraphAuthService>());
 

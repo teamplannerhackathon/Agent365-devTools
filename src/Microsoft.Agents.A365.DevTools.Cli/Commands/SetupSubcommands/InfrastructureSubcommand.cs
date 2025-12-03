@@ -86,7 +86,7 @@ public static class InfrastructureSubcommand
             }
             else
             {
-                logger.LogInformation("NeedDeployment=false � skipping Azure subscription validation.");
+                logger.LogInformation("NeedDeployment=false - skipping Azure subscription validation.");
             }
 
             var generatedConfigPath = Path.Combine(
@@ -158,7 +158,7 @@ public static class InfrastructureSubcommand
 
         if (!skipInfra)
         {
-            // Azure hosting scenario � need full infra details
+            // Azure hosting scenario - need full infra details
             if (new[] { subscriptionId, resourceGroup, planName, webAppName, location }.Any(string.IsNullOrWhiteSpace))
             {
                 logger.LogError(

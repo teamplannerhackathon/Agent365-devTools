@@ -87,7 +87,7 @@ public class BotConfigurator : IBotConfigurator
 
                 // Determine the audience (App ID) based on the environment
                 var audience = ConfigConstants.GetAgent365ToolsResourceAppId(config.Environment);
-                authToken = await _authService.GetAccessTokenAsync(audience);
+                authToken = await _authService.GetAccessTokenAsync(audience, tenantId);
 
                 if (string.IsNullOrWhiteSpace(authToken))
                 {
@@ -210,7 +210,7 @@ public class BotConfigurator : IBotConfigurator
 
                 _logger.LogInformation("Environment: {Environment}, Audience: {Audience}", config.Environment, audience);
 
-                authToken = await _authService.GetAccessTokenAsync(audience);
+                authToken = await _authService.GetAccessTokenAsync(audience, tenantId);
 
                 if (string.IsNullOrWhiteSpace(authToken))
                 {
@@ -241,10 +241,45 @@ public class BotConfigurator : IBotConfigurator
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    _logger.LogError("Failed to call delete endpoint. Status: {Status}", response.StatusCode);
-
                     var errorContent = await response.Content.ReadAsStringAsync();
-                    _logger.LogError("Error response: {Error}", errorContent);
+                    
+                    // Parse the error response to provide cleaner user-facing messages
+                    try
+                    {
+                        var errorJson = JsonSerializer.Deserialize<JsonElement>(errorContent);
+                        if (errorJson.TryGetProperty("error", out var errorMessage))
+                        {
+                            var error = errorMessage.GetString();
+                            if (errorJson.TryGetProperty("details", out var detailsElement))
+                            {
+                                var details = detailsElement.GetString();
+                                
+                                // Check for common error scenarios and provide cleaner messages
+                                if (details?.Contains("not found in any resource group") == true)
+                                {
+                                    _logger.LogError("Failed to delete bot endpoint '{EndpointName}'. Status: {Status}", endpointName, response.StatusCode);
+                                    _logger.LogError("The bot service was not found. It may have already been deleted or may not exist.");
+                                    return false;
+                                }
+                            }
+                            
+                            // Generic error with cleaned up message
+                            _logger.LogError("Failed to delete bot endpoint. Status: {Status}", response.StatusCode);
+                            _logger.LogError("{Error}", error);
+                        }
+                        else
+                        {
+                            // Couldn't parse error, show raw response
+                            _logger.LogError("Failed to delete bot endpoint. Status: {Status}", response.StatusCode);
+                            _logger.LogError("Error response: {Error}", errorContent);
+                        }
+                    }
+                    catch
+                    {
+                        // JSON parsing failed, show raw error
+                        _logger.LogError("Failed to delete bot endpoint. Status: {Status}", response.StatusCode);
+                        _logger.LogError("Error response: {Error}", errorContent);
+                    }
 
                     return false;
                 }

@@ -22,7 +22,7 @@ public static class LoggerFactoryHelper
         return LoggerFactory.Create(builder =>
         {
             builder.SetMinimumLevel(minimumLevel);
-            builder.AddConsoleFormatter<CleanConsoleFormatter, SimpleConsoleFormatterOptions>();
+            builder.AddConsoleFormatter<CleanConsoleFormatter, ConsoleFormatterOptions>();
             builder.AddConsole(options =>
             {
                 options.FormatterName = "clean";

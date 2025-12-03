@@ -24,10 +24,10 @@ class Program
 
         // Check if verbose flag is present to adjust logging level
         var isVerbose = args.Contains("--verbose") || args.Contains("-v");
+        var logLevel = isVerbose ? LogLevel.Debug : LogLevel.Information;
         
         // Configure Microsoft.Extensions.Logging with clean console formatter
-        var loggerFactory = LoggerFactoryHelper.CreateCleanLoggerFactory(
-            isVerbose ? LogLevel.Debug : LogLevel.Information);
+        var loggerFactory = LoggerFactoryHelper.CreateCleanLoggerFactory(logLevel);
         var startupLogger = loggerFactory.CreateLogger("Program");
 
         try
@@ -45,7 +45,7 @@ class Program
 
             // Set up dependency injection
             var services = new ServiceCollection();
-            ConfigureServices(services);
+            ConfigureServices(services, logLevel);
             var serviceProvider = services.BuildServiceProvider();
 
             // Create root command
@@ -125,12 +125,13 @@ class Program
         }
     }
 
-    private static void ConfigureServices(IServiceCollection services)
+    private static void ConfigureServices(IServiceCollection services, LogLevel minimumLevel = LogLevel.Information)
     {
         // Add logging with clean console formatter
         services.AddLogging(builder =>
         {
             builder.ClearProviders();
+            builder.SetMinimumLevel(minimumLevel);
             builder.AddConsoleFormatter<CleanConsoleFormatter, Microsoft.Extensions.Logging.Console.SimpleConsoleFormatterOptions>();
             builder.AddConsole(options =>
             {
