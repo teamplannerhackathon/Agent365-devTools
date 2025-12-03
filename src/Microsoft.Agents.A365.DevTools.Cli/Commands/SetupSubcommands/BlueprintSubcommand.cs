@@ -144,14 +144,15 @@ internal static class BlueprintSubcommand
         }
 
         // Create required services
+        var cleanLoggerFactory = LoggerFactoryHelper.CreateCleanLoggerFactory();
         var delegatedConsentService = new DelegatedConsentService(
-            LoggerFactory.Create(builder => builder.AddConsole()).CreateLogger<DelegatedConsentService>(),
+            cleanLoggerFactory.CreateLogger<DelegatedConsentService>(),
             new GraphApiService(
-                LoggerFactory.Create(builder => builder.AddConsole()).CreateLogger<GraphApiService>(),
+                cleanLoggerFactory.CreateLogger<GraphApiService>(),
                 executor));
 
         var graphService = new GraphApiService(
-            LoggerFactory.Create(builder => builder.AddConsole()).CreateLogger<GraphApiService>(),
+            cleanLoggerFactory.CreateLogger<GraphApiService>(),
             executor);
 
         // ========================================================================
@@ -701,8 +702,9 @@ internal static class BlueprintSubcommand
         logger.LogInformation("");
 
         // Use InteractiveGraphAuthService to get proper authentication
+        var cleanLoggerFactory = LoggerFactoryHelper.CreateCleanLoggerFactory();
         var interactiveAuth = new InteractiveGraphAuthService(
-            LoggerFactory.Create(builder => builder.AddConsole()).CreateLogger<InteractiveGraphAuthService>());
+            cleanLoggerFactory.CreateLogger<InteractiveGraphAuthService>());
 
         try
         {

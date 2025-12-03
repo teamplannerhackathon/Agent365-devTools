@@ -251,8 +251,9 @@ public class PublishCommand
                 logger.LogInformation("Created archive {ZipPath}", zipPath);
 
                 // Acquire MOS token using native C# service
+                var cleanLoggerFactory = LoggerFactoryHelper.CreateCleanLoggerFactory();
                 var mosTokenService = new MosTokenService(
-                    LoggerFactory.Create(builder => builder.AddConsole()).CreateLogger<MosTokenService>());
+                    cleanLoggerFactory.CreateLogger<MosTokenService>());
 
                 var mosToken = await mosTokenService.AcquireTokenAsync(mosEnv, mosPersonalToken);
                 if (string.IsNullOrWhiteSpace(mosToken))

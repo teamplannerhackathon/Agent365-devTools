@@ -20,8 +20,27 @@ public static class ExceptionHandler
     /// <param name="logger">Optional logger for diagnostics</param>
     public static void HandleAgent365Exception(Agent365Exception ex, ILogger? logger = null)
     {
-        // Display formatted error message
-        Console.Error.Write(ex.GetFormattedMessage());
+        // Get the full formatted message
+        var message = ex.GetFormattedMessage();
+        
+        // Split into lines to color only the ERROR line
+        var lines = message.Split(new[] { Environment.NewLine }, StringSplitOptions.None);
+        
+        foreach (var line in lines)
+        {
+            if (line.StartsWith("ERROR:", StringComparison.Ordinal))
+            {
+                // Color the ERROR line red
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.Error.WriteLine(line);
+                Console.ResetColor();
+            }
+            else
+            {
+                // Rest in default color
+                Console.Error.WriteLine(line);
+            }
+        }
         
         // For system errors (not user errors), suggest reporting as bug
         if (!ex.IsUserError)
@@ -34,5 +53,18 @@ public static class ExceptionHandler
         // Log for diagnostics (but don't show stack trace to user)
         logger?.LogError("Operation failed. ErrorCode={ErrorCode}, IssueDescription={IssueDescription}",
             ex.ErrorCode, ex.IssueDescription);
+    }
+
+    /// <summary>
+    /// Exits the application with proper cleanup: flushes console output and resets colors.
+    /// Use this instead of Environment.Exit to ensure logger output is visible.
+    /// </summary>
+    /// <param name="exitCode">The exit code to return (0 for success, non-zero for errors)</param>
+    public static void ExitWithCleanup(int exitCode)
+    {
+        Console.Out.Flush();
+        Console.Error.Flush();
+        Console.ResetColor();
+        Environment.Exit(exitCode);
     }
 }

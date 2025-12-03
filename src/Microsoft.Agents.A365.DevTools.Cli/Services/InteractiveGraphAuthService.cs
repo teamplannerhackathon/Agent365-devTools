@@ -55,31 +55,72 @@ public sealed class InteractiveGraphAuthService
 
         try
         {
-            // Use Azure.Identity InteractiveBrowserCredential which integrates with GraphServiceClient
-            // This provides the same authentication flow as Connect-MgGraph but without PowerShell
-            var credential = new InteractiveBrowserCredential(new InteractiveBrowserCredentialOptions
+            // Try InteractiveBrowserCredential first (preferred method)
+            try
             {
-                TenantId = tenantId,
-                ClientId = PowerShellAppId,
-                AuthorityHost = AzureAuthorityHosts.AzurePublicCloud,
-                // Redirect URI for interactive browser auth (standard for public clients)
-                RedirectUri = new Uri("http://localhost")
-            });
-            
-            _logger.LogInformation("Opening browser for authentication...");
-            _logger.LogInformation("IMPORTANT: You must grant consent for the following permissions:");
-            _logger.LogInformation("  - Application.ReadWrite.All (for creating applications and blueprints)");
-            _logger.LogInformation("  - AgentIdentityBlueprint.ReadWrite.All (for configuring inheritable permissions)");
-            _logger.LogInformation("");
-            
-            // Create GraphServiceClient with the credential
-            // The SDK will automatically handle token acquisition and refresh
-            var graphClient = new GraphServiceClient(credential, RequiredScopes);
+                var browserCredential = new InteractiveBrowserCredential(new InteractiveBrowserCredentialOptions
+                {
+                    TenantId = tenantId,
+                    ClientId = PowerShellAppId,
+                    AuthorityHost = AzureAuthorityHosts.AzurePublicCloud,
+                    // MSAL will start local server on http://localhost:{random_port}
+                    // This matches Microsoft Graph PowerShell app registration
+                });
+                
+                _logger.LogInformation("Opening browser for authentication...");
+                _logger.LogInformation("IMPORTANT: You must grant consent for the following permissions:");
+                _logger.LogInformation("  - Application.ReadWrite.All (for creating applications and blueprints)");
+                _logger.LogInformation("  - AgentIdentityBlueprint.ReadWrite.All (for configuring inheritable permissions)");
+                _logger.LogInformation("");
+                
+                // Create GraphServiceClient with the credential
+                var graphClient = new GraphServiceClient(browserCredential, RequiredScopes);
 
-            _logger.LogInformation("Successfully authenticated to Microsoft Graph!");
-            _logger.LogInformation("");
-            
-            return Task.FromResult(graphClient);
+                _logger.LogInformation("Successfully authenticated to Microsoft Graph!");
+                _logger.LogInformation("");
+                
+                return Task.FromResult(graphClient);
+            }
+            catch (Azure.Identity.AuthenticationFailedException ex) when (
+                ex.Message.Contains("localhost") || 
+                ex.Message.Contains("connection") ||
+                ex.Message.Contains("redirect_uri"))
+            {
+                // Fallback to Device Code Flow if localhost redirect fails
+                _logger.LogWarning("Browser authentication failed, falling back to device code flow...");
+                _logger.LogInformation("");
+                
+                var deviceCodeCredential = new DeviceCodeCredential(new DeviceCodeCredentialOptions
+                {
+                    TenantId = tenantId,
+                    ClientId = PowerShellAppId,
+                    AuthorityHost = AzureAuthorityHosts.AzurePublicCloud,
+                    DeviceCodeCallback = (code, cancellation) =>
+                    {
+                        _logger.LogInformation("");
+                        _logger.LogInformation("=============================================================");
+                        _logger.LogInformation("DEVICE CODE AUTHENTICATION");
+                        _logger.LogInformation("=============================================================");
+                        _logger.LogInformation("");
+                        _logger.LogInformation("To sign in, use a web browser to open the page:");
+                        _logger.LogInformation("    {0}", code.VerificationUri);
+                        _logger.LogInformation("");
+                        _logger.LogInformation("And enter the code:");
+                        _logger.LogInformation("    {0}", code.UserCode);
+                        _logger.LogInformation("");
+                        _logger.LogInformation("=============================================================");
+                        _logger.LogInformation("");
+                        return Task.CompletedTask;
+                    }
+                });
+                
+                var graphClient = new GraphServiceClient(deviceCodeCredential, RequiredScopes);
+                
+                _logger.LogInformation("Successfully authenticated to Microsoft Graph!");
+                _logger.LogInformation("");
+                
+                return Task.FromResult(graphClient);
+            }
         }
         catch (Azure.Identity.AuthenticationFailedException ex) when (ex.Message.Contains("invalid_grant"))
         {

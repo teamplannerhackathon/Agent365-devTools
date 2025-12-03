@@ -4,6 +4,7 @@
 using Microsoft.Agents.A365.DevTools.Cli.Commands;
 using Microsoft.Agents.A365.DevTools.Cli.Exceptions;
 using Microsoft.Agents.A365.DevTools.Cli.Services;
+using Microsoft.Agents.A365.DevTools.Cli.Services.Helpers;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System.CommandLine;
@@ -24,17 +25,9 @@ class Program
         // Check if verbose flag is present to adjust logging level
         var isVerbose = args.Contains("--verbose") || args.Contains("-v");
         
-        // Configure Microsoft.Extensions.Logging with console output - simplified format
-        var loggerFactory = LoggerFactory.Create(builder =>
-        {
-            builder.SetMinimumLevel(isVerbose ? LogLevel.Debug : LogLevel.Information);
-            builder.AddSimpleConsole(options =>
-            {
-                options.SingleLine = true;
-                options.IncludeScopes = false;
-                options.TimestampFormat = string.Empty; // No timestamps for user-facing CLI
-            });
-        });
+        // Configure Microsoft.Extensions.Logging with clean console formatter
+        var loggerFactory = LoggerFactoryHelper.CreateCleanLoggerFactory(
+            isVerbose ? LogLevel.Debug : LogLevel.Information);
         var startupLogger = loggerFactory.CreateLogger("Program");
 
         try
@@ -127,21 +120,21 @@ class Program
         }
         finally
         {
+            Console.ResetColor();
             loggerFactory.Dispose();
         }
     }
 
     private static void ConfigureServices(IServiceCollection services)
     {
-        // Add logging
+        // Add logging with clean console formatter
         services.AddLogging(builder =>
         {
             builder.ClearProviders();
-            builder.AddSimpleConsole(options =>
+            builder.AddConsoleFormatter<CleanConsoleFormatter, Microsoft.Extensions.Logging.Console.SimpleConsoleFormatterOptions>();
+            builder.AddConsole(options =>
             {
-                options.SingleLine = true;
-                options.IncludeScopes = false;
-                options.TimestampFormat = string.Empty; // No timestamps for user-facing CLI
+                options.FormatterName = "clean";
             });
         });
 
