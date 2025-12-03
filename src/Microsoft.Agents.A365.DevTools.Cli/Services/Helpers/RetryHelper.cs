@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
+using Microsoft.Agents.A365.DevTools.Cli.Exceptions;
 using Microsoft.Extensions.Logging;
 
 namespace Microsoft.Agents.A365.DevTools.Cli.Services.Helpers;
@@ -20,6 +21,15 @@ public class RetryHelper
     /// <summary>
     /// Execute an async operation with retry logic and exponential backoff
     /// </summary>
+    /// <typeparam name="T">Return type of the operation</typeparam>
+    /// <param name="operation">The async operation to execute. Receives a cancellation token and returns a result.</param>
+    /// <param name="shouldRetry">Predicate that determines if retry is needed. Returns TRUE when the operation should be retried (operation failed), FALSE when operation succeeded and no retry is needed.</param>
+    /// <param name="maxRetries">Maximum number of retry attempts before giving up (default: 5)</param>
+    /// <param name="baseDelaySeconds">Base delay in seconds for exponential backoff calculation (default: 2). Actual delay doubles with each attempt.</param>
+    /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+    /// <returns>Result of the operation when shouldRetry returns false (success), or the last result after all retries are exhausted (may be null/default(T) if operation never succeeded)</returns>
+    /// <exception cref="HttpRequestException">Thrown when HTTP request fails on the last retry attempt</exception>
+    /// <exception cref="TaskCanceledException">Thrown when operation is canceled on the last retry attempt</exception>
     public async Task<T> ExecuteWithRetryAsync<T>(
         Func<CancellationToken, Task<T>> operation,
         Func<T, bool> shouldRetry,
@@ -73,12 +83,22 @@ public class RetryHelper
             }
         }
 
+        // If we had an exception on the last attempt, throw it
         if (lastException != null)
         {
             throw lastException;
         }
 
-        return lastResult!;
+        // All retries exhausted - verify we have a result to return
+        if (lastResult is null)
+        {
+            throw new RetryExhaustedException(
+                "Async operation with retry",
+                maxRetries,
+                "Operation did not return a value and no exception was thrown");
+        }
+
+        return lastResult;
     }
 
     /// <summary>

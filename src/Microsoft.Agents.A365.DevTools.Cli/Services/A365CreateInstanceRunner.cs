@@ -255,12 +255,7 @@ public sealed class A365CreateInstanceRunner
                         baseDelaySeconds: 5,
                         cancellationToken);
                     
-                    if (servicePrincipalExists)
-                    {
-                        _logger.LogInformation("Waiting 10 more seconds for complete propagation...");
-                        await Task.Delay(10000, cancellationToken);
-                    }
-                    else
+                    if (!servicePrincipalExists)
                     {
                         _logger.LogError("Agent Identity service principal not found in directory after 60+ seconds");
                         _logger.LogError("The identity was created but has not fully propagated yet.");
@@ -272,6 +267,10 @@ public sealed class A365CreateInstanceRunner
                         _logger.LogError("");
                         return false;
                     }
+                    
+                    // Service principal exists, wait a bit more for complete propagation
+                    _logger.LogInformation("Waiting 10 more seconds for complete propagation...");
+                    await Task.Delay(10000, cancellationToken);
                 }
                 catch (Exception ex)
                 {

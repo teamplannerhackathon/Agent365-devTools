@@ -344,8 +344,9 @@ public class CreateInstanceCommand
                     generatedConfigPath = Path.Combine(
                         config.DirectoryName ?? Environment.CurrentDirectory,
                         "a365.generated.config.json");
-                    var syncLoggerFactory2 = LoggerFactoryHelper.CreateCleanLoggerFactory();
-                    var platformDetector = new PlatformDetector(syncLoggerFactory2.CreateLogger<PlatformDetector>());
+                    
+                    var syncLoggerFactory = LoggerFactoryHelper.CreateCleanLoggerFactory();
+                    var platformDetector = new PlatformDetector(syncLoggerFactory.CreateLogger<PlatformDetector>());
 
                     await ProjectSettingsSyncHelper.ExecuteAsync(
                         a365ConfigPath: config.FullName,

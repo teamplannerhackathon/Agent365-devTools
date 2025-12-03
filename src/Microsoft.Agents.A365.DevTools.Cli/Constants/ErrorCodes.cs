@@ -17,5 +17,6 @@ namespace Microsoft.Agents.A365.DevTools.Cli.Constants
         public const string DeploymentMcpFailed = "DEPLOYMENT_MCP_FAILED";
         public const string HighPrivilegeScopeDetected = "HIGH_PRIVILEGE_SCOPE_DETECTED";
         public const string SetupValidationFailed = "SETUP_VALIDATION_FAILED";
+        public const string RetryExhausted = "RETRY_EXHAUSTED";
     }
 }
