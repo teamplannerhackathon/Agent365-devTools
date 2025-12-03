@@ -45,7 +45,7 @@ class Program
 
             // Set up dependency injection
             var services = new ServiceCollection();
-            ConfigureServices(services, logLevel);
+            ConfigureServices(services, logLevel, logFilePath);
             var serviceProvider = services.BuildServiceProvider();
 
             // Create root command
@@ -125,18 +125,27 @@ class Program
         }
     }
 
-    private static void ConfigureServices(IServiceCollection services, LogLevel minimumLevel = LogLevel.Information)
+    private static void ConfigureServices(IServiceCollection services, LogLevel minimumLevel = LogLevel.Information, string? logFilePath = null)
     {
-        // Add logging with clean console formatter
+        // Add logging with clean console formatter and optional file logging
         services.AddLogging(builder =>
         {
             builder.ClearProviders();
             builder.SetMinimumLevel(minimumLevel);
+            
+            // Console logging with clean formatter
             builder.AddConsoleFormatter<CleanConsoleFormatter, Microsoft.Extensions.Logging.Console.SimpleConsoleFormatterOptions>();
             builder.AddConsole(options =>
             {
                 options.FormatterName = "clean";
             });
+            
+            // File logging if path provided
+            if (!string.IsNullOrEmpty(logFilePath))
+            {
+                builder.Services.AddSingleton<ILoggerProvider>(provider => 
+                    new FileLoggerProvider(logFilePath, minimumLevel));
+            }
         });
 
         // Add core services
