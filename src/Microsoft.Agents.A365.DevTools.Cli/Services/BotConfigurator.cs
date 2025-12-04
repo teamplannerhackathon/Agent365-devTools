@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 using Microsoft.Agents.A365.DevTools.Cli.Constants;
-using Microsoft.Agents.A365.DevTools.Cli.Exceptions;
 using Microsoft.Agents.A365.DevTools.Cli.Services.Helpers;
 using Microsoft.Extensions.Logging;
 using System.Net.Http.Headers;
@@ -63,7 +62,8 @@ public class BotConfigurator : IBotConfigurator
                 return false;
             }
 
-            var subscriptionInfo = JsonSerializer.Deserialize<JsonElement>(subscriptionResult.StandardOutput);
+            var cleanedOutput = CleanJsonOutput(subscriptionResult.StandardOutput);
+            var subscriptionInfo = JsonSerializer.Deserialize<JsonElement>(cleanedOutput);
             var tenantId = subscriptionInfo.GetProperty("tenantId").GetString();
 
             if (string.IsNullOrEmpty(tenantId))
@@ -88,7 +88,7 @@ public class BotConfigurator : IBotConfigurator
 
                 // Determine the audience (App ID) based on the environment
                 var audience = ConfigConstants.GetAgent365ToolsResourceAppId(config.Environment);
-                authToken = await _authService.GetAccessTokenAsync(audience, tenantId);
+                authToken = await _authService.GetAccessTokenAsync(audience);
 
                 if (string.IsNullOrWhiteSpace(authToken))
                 {
@@ -181,7 +181,8 @@ public class BotConfigurator : IBotConfigurator
                 return false;
             }
 
-            var subscriptionInfo = JsonSerializer.Deserialize<JsonElement>(subscriptionResult.StandardOutput);
+            var cleanedOutput = CleanJsonOutput(subscriptionResult.StandardOutput);
+            var subscriptionInfo = JsonSerializer.Deserialize<JsonElement>(cleanedOutput);
             var tenantId = subscriptionInfo.GetProperty("tenantId").GetString();
 
             if (string.IsNullOrEmpty(tenantId))
@@ -211,7 +212,7 @@ public class BotConfigurator : IBotConfigurator
 
                 _logger.LogInformation("Environment: {Environment}, Audience: {Audience}", config.Environment, audience);
 
-                authToken = await _authService.GetAccessTokenAsync(audience, tenantId);
+                authToken = await _authService.GetAccessTokenAsync(audience);
 
                 if (string.IsNullOrWhiteSpace(authToken))
                 {
@@ -242,45 +243,10 @@ public class BotConfigurator : IBotConfigurator
 
                 if (!response.IsSuccessStatusCode)
                 {
+                    _logger.LogError("Failed to call delete endpoint. Status: {Status}", response.StatusCode);
+
                     var errorContent = await response.Content.ReadAsStringAsync();
-                    
-                    // Parse the error response to provide cleaner user-facing messages
-                    try
-                    {
-                        var errorJson = JsonSerializer.Deserialize<JsonElement>(errorContent);
-                        if (errorJson.TryGetProperty("error", out var errorMessage))
-                        {
-                            var error = errorMessage.GetString();
-                            if (errorJson.TryGetProperty("details", out var detailsElement))
-                            {
-                                var details = detailsElement.GetString();
-                                
-                                // Check for common error scenarios and provide cleaner messages
-                                if (details?.Contains("not found in any resource group") == true)
-                                {
-                                    _logger.LogError("Failed to delete bot endpoint '{EndpointName}'. Status: {Status}", endpointName, response.StatusCode);
-                                    _logger.LogError("The bot service was not found. It may have already been deleted or may not exist.");
-                                    return false;
-                                }
-                            }
-                            
-                            // Generic error with cleaned up message
-                            _logger.LogError("Failed to delete bot endpoint. Status: {Status}", response.StatusCode);
-                            _logger.LogError("{Error}", error);
-                        }
-                        else
-                        {
-                            // Couldn't parse error, show raw response
-                            _logger.LogError("Failed to delete bot endpoint. Status: {Status}", response.StatusCode);
-                            _logger.LogError("Error response: {Error}", errorContent);
-                        }
-                    }
-                    catch
-                    {
-                        // JSON parsing failed, show raw error
-                        _logger.LogError("Failed to delete bot endpoint. Status: {Status}", response.StatusCode);
-                        _logger.LogError("Error response: {Error}", errorContent);
-                    }
+                    _logger.LogError("Error response: {Error}", errorContent);
 
                     return false;
                 }
@@ -288,14 +254,9 @@ public class BotConfigurator : IBotConfigurator
                 _logger.LogInformation("Successfully received response from delete endpoint");
                 return true;
             }
-            catch (AzureAuthenticationException ex)
-            {
-                _logger.LogError("Authentication failed: {Message}", ex.IssueDescription);
-                return false;
-            }
             catch (Exception ex)
             {
-                _logger.LogError("Failed to call delete endpoint: {Message}", ex.Message);
+                _logger.LogError(ex, "Failed to call delete endpoint directly");
                 return false;
             }
         }
@@ -309,5 +270,37 @@ public class BotConfigurator : IBotConfigurator
             _logger.LogError(ex, "Unexpected error deleting endpoint with agent blueprint: {Message}", ex.Message);
             return false;
         }
+    }
+
+    /// <summary>
+    /// Cleans JSON output from Azure CLI by removing control characters and non-JSON content
+    /// </summary>
+    private string CleanJsonOutput(string output)
+    {
+        if (string.IsNullOrWhiteSpace(output))
+        {
+            return string.Empty;
+        }
+
+        // Remove control characters (0x00-0x1F except \r, \n, \t)
+        var cleaned = new System.Text.StringBuilder(output.Length);
+        foreach (char c in output)
+        {
+            if (c >= 32 || c == '\n' || c == '\r' || c == '\t')
+            {
+                cleaned.Append(c);
+            }
+        }
+
+        var result = cleaned.ToString().Trim();
+        
+        // Find the first { or [ to locate JSON start
+        int jsonStart = result.IndexOfAny(new[] { '{', '[' });
+        if (jsonStart > 0)
+        {
+            result = result.Substring(jsonStart);
+        }
+
+        return result;
     }
 }
