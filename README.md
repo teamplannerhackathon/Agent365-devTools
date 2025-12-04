@@ -7,7 +7,7 @@
 [![Contributors](https://img.shields.io/github/contributors/microsoft/Agent365-devTools?label=Contributors)](https://github.com/microsoft/Agent365-devTools/graphs/contributors)
 
 > **Note:**  
-> Use the information in this README to contribute to this open-source project. To learn about using this CLI in your projects, refer to the [Microsoft Agent 365 Developer documentation](https://aka.ms/agents365/docs).
+> Use the information in this README to contribute to this open-source project. To learn about using this CLI in your projects, refer to the [Microsoft Agent 365 CLI documentation](https://learn.microsoft.com/en-us/microsoft-agent-365/developer/agent-365-cli).
 
 The **Microsoft Agent 365 DevTools CLI** is a command-line interface tool designed to streamline the development, deployment, and management of Microsoft Agent 365 applications. This CLI provides comprehensive tooling for configuration management, Azure resource provisioning, MCP (Model Context Protocol) server integration, and agent deployment workflows.
 
@@ -15,11 +15,9 @@ The **Microsoft Agent 365 DevTools CLI** is a command-line interface tool design
 
 The Microsoft Agent 365 DevTools CLI focuses on these core areas:
 
-- **Configuration Management**: Initialize and manage Agent 365 project configurations with interactive wizards
-- **Azure Integration**: Seamless authentication, resource provisioning, and deployment to Azure
-- **MCP Server Support**: Package, deploy, and manage Model Context Protocol servers
-- **Development Tools**: Local development support with hot-reload and debugging capabilities
-- **Deployment Automation**: Streamlined deployment workflows for production and development environments
+- **Agent 365 configuration management**: Initialize and manage Agent 365 project configurations with interactive wizards
+- **Azure resource provisioning**: Setup of important Agent 365 resources in Azure
+- **MCP Server support**: Package, deploy, and manage Model Context Protocol servers in your Agent 365 agent
 
 ## Current Project State
 
@@ -32,7 +30,7 @@ This project is currently in active development. The CLI is being actively devel
 From NuGet (Production):
 
 ```powershell
-dotnet tool install -g Microsoft.Agents.A365.DevTools.Cli
+dotnet tool install -g Microsoft.Agents.A365.DevTools.Cli --prerelease
 ```
 
 ## Documentation
