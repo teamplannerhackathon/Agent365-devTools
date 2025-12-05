@@ -1,5 +1,5 @@
-using MockNotificationMCP.MockTools;
-using System.Text.Json;
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 
 // WebApplication for SSE hosting
 var builder = WebApplication.CreateBuilder(args);
@@ -68,7 +68,7 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok", mcp = "/mcp", mock =
 
 // ===================== MOCK MCP ENDPOINTS =====================
 // JSON-RPC over HTTP for mock tools at /mcp-mock
-app.MapPost("/mcp-mock/agents/servers/{mcpServerName}", async (string mcpServerName, HttpRequest httpRequest, IMockToolExecutor executor, ILogger<Program> log) =>
+app.MapPost("/agents/servers/{mcpServerName}", async (string mcpServerName, HttpRequest httpRequest, IMockToolExecutor executor, ILogger<Program> log) =>
 {
     try
     {
@@ -193,13 +193,13 @@ app.MapPost("/mcp-mock/agents/servers/{mcpServerName}", async (string mcpServerN
 });
 
 // Admin endpoints for managing mock tools - now need mcpServer parameter
-app.MapGet("/mcp-mock/admin/{mcpServer}/tools", async (string mcpServer, IEnumerable<IMockToolStore> stores) =>
+app.MapGet("/admin/{mcpServer}/tools", async (string mcpServer, IEnumerable<IMockToolStore> stores) =>
 {
     var store = stores.FirstOrDefault(s => string.Equals(s.McpServerName, mcpServer, StringComparison.OrdinalIgnoreCase));
     return store == null ? Results.NotFound(new { message = $"MCP server '{mcpServer}' not found" }) : Results.Ok(await store.ListAsync());
 });
 
-app.MapGet("/mcp-mock/admin/{mcpServer}/tools/{name}", async (string mcpServer, string name, IEnumerable<IMockToolStore> stores) =>
+app.MapGet("/admin/{mcpServer}/tools/{name}", async (string mcpServer, string name, IEnumerable<IMockToolStore> stores) =>
 {
     var store = stores.FirstOrDefault(s => string.Equals(s.McpServerName, mcpServer, StringComparison.OrdinalIgnoreCase));
     if (store == null) return Results.NotFound(new { message = $"MCP server '{mcpServer}' not found" });
@@ -208,7 +208,7 @@ app.MapGet("/mcp-mock/admin/{mcpServer}/tools/{name}", async (string mcpServer, 
     return tool is null ? Results.NotFound(new { message = $"Mock tool '{name}' not found" }) : Results.Ok(tool);
 });
 
-app.MapPost("/mcp-mock/admin/{mcpServer}/tools", async (string mcpServer, MockToolDefinition def, IEnumerable<IMockToolStore> stores) =>
+app.MapPost("/admin/{mcpServer}/tools", async (string mcpServer, MockToolDefinition def, IEnumerable<IMockToolStore> stores) =>
 {
     var store = stores.FirstOrDefault(s => string.Equals(s.McpServerName, mcpServer, StringComparison.OrdinalIgnoreCase));
     if (store == null) return Results.NotFound(new { message = $"MCP server '{mcpServer}' not found" });
@@ -217,7 +217,7 @@ app.MapPost("/mcp-mock/admin/{mcpServer}/tools", async (string mcpServer, MockTo
     return Results.Ok(def);
 });
 
-app.MapPut("/mcp-mock/admin/{mcpServer}/tools/{name}", async (string mcpServer, string name, MockToolDefinition def, IEnumerable<IMockToolStore> stores) =>
+app.MapPut("/admin/{mcpServer}/tools/{name}", async (string mcpServer, string name, MockToolDefinition def, IEnumerable<IMockToolStore> stores) =>
 {
     var store = stores.FirstOrDefault(s => string.Equals(s.McpServerName, mcpServer, StringComparison.OrdinalIgnoreCase));
     if (store == null) return Results.NotFound(new { message = $"MCP server '{mcpServer}' not found" });
@@ -227,7 +227,7 @@ app.MapPut("/mcp-mock/admin/{mcpServer}/tools/{name}", async (string mcpServer, 
     return Results.Ok(def);
 });
 
-app.MapDelete("/mcp-mock/admin/{mcpServer}/tools/{name}", async (string mcpServer, string name, IEnumerable<IMockToolStore> stores) =>
+app.MapDelete("/admin/{mcpServer}/tools/{name}", async (string mcpServer, string name, IEnumerable<IMockToolStore> stores) =>
 {
     var store = stores.FirstOrDefault(s => string.Equals(s.McpServerName, mcpServer, StringComparison.OrdinalIgnoreCase));
     if (store == null) return Results.NotFound(new { message = $"MCP server '{mcpServer}' not found" });

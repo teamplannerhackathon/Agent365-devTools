@@ -1,5 +1,5 @@
-using System.Collections.Generic;
-using System.Text.Json.Serialization;
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 
 namespace MockNotificationMCP.MockTools;
 

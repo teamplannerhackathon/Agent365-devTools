@@ -1,5 +1,5 @@
-using System.Collections.Concurrent;
-using System.Text.Json;
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 
 namespace MockNotificationMCP.MockTools;
 
@@ -24,9 +24,9 @@ public class FileMockToolStore : IMockToolStore, IDisposable
     public FileMockToolStore(string mcpServerName, MockToolStoreOptions options)
     {
         if (string.IsNullOrWhiteSpace(mcpServerName)) throw new ArgumentException("mcpServerName required", nameof(mcpServerName));
-        
+
         McpServerName = mcpServerName;
-        
+
         // Sanitize server name for file system
         var invalid = Path.GetInvalidFileNameChars();
         var safeName = new string(mcpServerName.Select(c => invalid.Contains(c) ? '_' : c).ToArray());
