@@ -54,7 +54,8 @@ internal static class BlueprintSubcommand
         IAzureValidator azureValidator,
         AzureWebAppCreator webAppCreator,
         PlatformDetector platformDetector,
-        IBotConfigurator botConfigurator)
+        IBotConfigurator botConfigurator,
+        GraphApiService graphApiService)
     {
         var command = new Command("blueprint", 
             "Create agent blueprint (Entra ID application registration)\n" +
@@ -101,7 +102,8 @@ internal static class BlueprintSubcommand
                 false,
                 configService,
                 botConfigurator,
-                platformDetector
+                platformDetector,
+                graphApiService
                 );
 
         }, configOption, verboseOption, dryRunOption);
@@ -120,6 +122,7 @@ internal static class BlueprintSubcommand
         IConfigService configService,
         IBotConfigurator botConfigurator,
         PlatformDetector platformDetector,
+        GraphApiService graphApiService,
         CancellationToken cancellationToken = default)
     {
         logger.LogInformation("");
@@ -169,9 +172,8 @@ internal static class BlueprintSubcommand
                 cleanLoggerFactory.CreateLogger<GraphApiService>(),
                 executor));
 
-        var graphService = new GraphApiService(
-            cleanLoggerFactory.CreateLogger<GraphApiService>(),
-            executor);
+        // Use DI-provided GraphApiService which already has MicrosoftGraphTokenProvider configured
+        var graphService = graphApiService;
 
         // ========================================================================
         // Phase 2.1: Delegated Consent
@@ -216,6 +218,7 @@ internal static class BlueprintSubcommand
         var blueprintResult = await CreateAgentBlueprintAsync(
                 logger,
                 executor,
+                graphService,
                 setupConfig.TenantId,
                 setupConfig.AgentBlueprintDisplayName,
                 setupConfig.AgentIdentityDisplayName,
@@ -354,6 +357,7 @@ internal static class BlueprintSubcommand
     public static async Task<(bool success, string? appId, string? objectId, string? servicePrincipalId)> CreateAgentBlueprintAsync(
         ILogger logger,
         CommandExecutor executor,
+        GraphApiService graphApiService,
         string tenantId,
         string displayName,
         string? agentIdentityDisplayName,
@@ -626,6 +630,37 @@ internal static class BlueprintSubcommand
             else
             {
                 logger.LogWarning("Graph API admin consent may not have completed");
+            }
+
+            // Set inheritable permissions for Microsoft Graph so agent instances can access Graph on behalf of users
+            if (consentSuccess)
+            {
+                logger.LogInformation("Configuring inheritable permissions for Microsoft Graph...");
+                try
+                {
+                    // Update config with blueprint ID so EnsureResourcePermissionsAsync can use it
+                    setupConfig.AgentBlueprintId = appId;
+
+                    await SetupHelpers.EnsureResourcePermissionsAsync(
+                        graph: graphApiService,
+                        config: setupConfig,
+                        resourceAppId: AuthenticationConstants.MicrosoftGraphResourceAppId,
+                        resourceName: "Microsoft Graph",
+                        scopes: applicationScopes.ToArray(),
+                        logger: logger,
+                        addToRequiredResourceAccess: false,
+                        setInheritablePermissions: true,
+                        setupResults: null,
+                        ct: ct);
+
+                    logger.LogInformation("Microsoft Graph inheritable permissions configured successfully");
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning("Failed to configure Microsoft Graph inheritable permissions: {Message}", ex.Message);
+                    logger.LogWarning("Agent instances may not be able to access Microsoft Graph resources");
+                    logger.LogWarning("You can configure these manually later with: a365 setup permissions");
+                }
             }
 
             // Add Graph API consent to the resource consents collection

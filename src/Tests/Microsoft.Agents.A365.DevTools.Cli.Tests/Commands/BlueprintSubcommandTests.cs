@@ -27,6 +27,7 @@ public class BlueprintSubcommandTests
     private readonly AzureWebAppCreator _mockWebAppCreator;
     private readonly PlatformDetector _mockPlatformDetector;
     private readonly IBotConfigurator _mockBotConfigurator;
+    private readonly GraphApiService _mockGraphApiService;
 
     public BlueprintSubcommandTests()
     {
@@ -39,6 +40,7 @@ public class BlueprintSubcommandTests
         var mockPlatformDetectorLogger = Substitute.For<ILogger<PlatformDetector>>();
         _mockPlatformDetector = Substitute.ForPartsOf<PlatformDetector>(mockPlatformDetectorLogger);
         _mockBotConfigurator = Substitute.For<IBotConfigurator>();
+        _mockGraphApiService = Substitute.ForPartsOf<GraphApiService>(Substitute.For<ILogger<GraphApiService>>(), _mockExecutor);
 
     }
 
@@ -53,7 +55,8 @@ public class BlueprintSubcommandTests
             _mockAzureValidator,
             _mockWebAppCreator,
             _mockPlatformDetector,
-            _mockBotConfigurator);
+            _mockBotConfigurator,
+            _mockGraphApiService);
 
         // Assert
         command.Name.Should().Be("blueprint");
@@ -70,7 +73,8 @@ public class BlueprintSubcommandTests
             _mockAzureValidator,
             _mockWebAppCreator,
             _mockPlatformDetector,
-            _mockBotConfigurator);
+            _mockBotConfigurator,
+            _mockGraphApiService);
 
         // Assert
         command.Description.Should().NotBeNullOrEmpty();
@@ -88,7 +92,8 @@ public class BlueprintSubcommandTests
             _mockAzureValidator,
             _mockWebAppCreator,
             _mockPlatformDetector,
-            _mockBotConfigurator);
+            _mockBotConfigurator,
+            _mockGraphApiService);
 
         // Assert
         var configOption = command.Options.FirstOrDefault(o => o.Name == "config");
@@ -108,7 +113,8 @@ public class BlueprintSubcommandTests
             _mockAzureValidator,
             _mockWebAppCreator,
             _mockPlatformDetector,
-            _mockBotConfigurator);
+            _mockBotConfigurator,
+            _mockGraphApiService);
 
         // Assert
         var verboseOption = command.Options.FirstOrDefault(o => o.Name == "verbose");
@@ -128,7 +134,8 @@ public class BlueprintSubcommandTests
             _mockAzureValidator,
             _mockWebAppCreator,
             _mockPlatformDetector,
-            _mockBotConfigurator);
+            _mockBotConfigurator,
+            _mockGraphApiService);
 
         // Assert
         var dryRunOption = command.Options.FirstOrDefault(o => o.Name == "dry-run");
@@ -156,7 +163,8 @@ public class BlueprintSubcommandTests
             _mockAzureValidator,
             _mockWebAppCreator,
             _mockPlatformDetector,
-            _mockBotConfigurator);
+            _mockBotConfigurator,
+            _mockGraphApiService);
 
         var parser = new CommandLineBuilder(command).Build();
         var testConsole = new TestConsole();
@@ -190,7 +198,8 @@ public class BlueprintSubcommandTests
             _mockAzureValidator,
             _mockWebAppCreator,
             _mockPlatformDetector,
-            _mockBotConfigurator);
+            _mockBotConfigurator,
+            _mockGraphApiService);
 
         var parser = new CommandLineBuilder(command).Build();
         var testConsole = new TestConsole();
@@ -294,7 +303,8 @@ public class BlueprintSubcommandTests
             _mockAzureValidator,
             _mockWebAppCreator,
             _mockPlatformDetector,
-            _mockBotConfigurator);
+            _mockBotConfigurator,
+            _mockGraphApiService);
 
         // Assert
         command.Description.Should().Contain("Agent ID Developer");
@@ -321,7 +331,8 @@ public class BlueprintSubcommandTests
             _mockAzureValidator,
             _mockWebAppCreator,
             _mockPlatformDetector,
-            _mockBotConfigurator);
+            _mockBotConfigurator,
+            _mockGraphApiService);
 
         var parser = new CommandLineBuilder(command).Build();
         var testConsole = new TestConsole();
@@ -356,7 +367,8 @@ public class BlueprintSubcommandTests
             _mockAzureValidator,
             _mockWebAppCreator,
             _mockPlatformDetector,
-            _mockBotConfigurator);
+            _mockBotConfigurator,
+            _mockGraphApiService);
 
         var parser = new CommandLineBuilder(command).Build();
         var testConsole = new TestConsole();
@@ -383,7 +395,8 @@ public class BlueprintSubcommandTests
             _mockAzureValidator,
             _mockWebAppCreator,
             _mockPlatformDetector,
-            _mockBotConfigurator);
+            _mockBotConfigurator,
+            _mockGraphApiService);
 
         // Assert - Verify all expected options are present
         command.Options.Should().HaveCountGreaterOrEqualTo(3);
@@ -408,7 +421,8 @@ public class BlueprintSubcommandTests
             _mockAzureValidator,
             _mockWebAppCreator,
             _mockPlatformDetector,
-            _mockBotConfigurator);
+            _mockBotConfigurator,
+            _mockGraphApiService);
 
         var parser = new CommandLineBuilder(command).Build();
         var testConsole = new TestConsole();
@@ -429,7 +443,8 @@ public class BlueprintSubcommandTests
             _mockAzureValidator,
             _mockWebAppCreator,
             _mockPlatformDetector,
-            _mockBotConfigurator);
+            _mockBotConfigurator,
+            _mockGraphApiService);
 
         // Assert - Verify the config option exists and has expected aliases
         var configOption = command.Options.First(o => o.Name == "config");
@@ -490,7 +505,8 @@ public class BlueprintSubcommandTests
             _mockAzureValidator,
             _mockWebAppCreator,
             _mockPlatformDetector,
-            _mockBotConfigurator);
+            _mockBotConfigurator,
+            _mockGraphApiService);
 
         // Assert - Verify description provides context and guidance
         command.Description.Should().NotBeNullOrEmpty();
@@ -517,7 +533,8 @@ public class BlueprintSubcommandTests
             _mockAzureValidator,
             _mockWebAppCreator,
             _mockPlatformDetector,
-            _mockBotConfigurator);
+            _mockBotConfigurator,
+            _mockGraphApiService);
 
         var parser = new CommandLineBuilder(command).Build();
         var testConsole = new TestConsole();
@@ -550,7 +567,8 @@ public class BlueprintSubcommandTests
             _mockAzureValidator,
             _mockWebAppCreator,
             _mockPlatformDetector,
-            _mockBotConfigurator);
+            _mockBotConfigurator,
+            _mockGraphApiService);
 
         var parser = new CommandLineBuilder(command).Build();
         var testConsole = new TestConsole();
@@ -581,7 +599,8 @@ public class BlueprintSubcommandTests
             _mockAzureValidator,
             _mockWebAppCreator,
             _mockPlatformDetector,
-            _mockBotConfigurator);
+            _mockBotConfigurator,
+            _mockGraphApiService);
 
         // Assert - Verify command can be added to a parser
         var parser = new CommandLineBuilder(command).Build();

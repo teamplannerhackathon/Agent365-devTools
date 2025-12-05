@@ -230,7 +230,8 @@ internal static class AllSubcommand
                         true,
                         configService,
                         botConfigurator,
-                        platformDetector
+                        platformDetector,
+                        graphApiService
                         );
 
                     setupResults.BlueprintCreated = blueprintCreated;

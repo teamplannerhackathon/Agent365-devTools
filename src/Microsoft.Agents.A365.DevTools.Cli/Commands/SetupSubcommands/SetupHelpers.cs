@@ -277,7 +277,7 @@ internal static class SetupHelpers
                     operation: async (ct) =>
                     {
                         var (exists, verifiedScopes, verifyError) = await graph.VerifyInheritablePermissionsAsync(
-                            config.TenantId, config.AgentBlueprintId, resourceAppId, ct);
+                            config.TenantId, config.AgentBlueprintId, resourceAppId, ct, requiredPermissions);
                         return (exists, verifiedScopes, verifyError);
                     },
                     shouldRetry: (result) =>
