@@ -1056,7 +1056,7 @@ public class BlueprintSubcommandTests
         //     logger);
         //
         // The method then calls:
-        // await delegatedConsentService.EnsureAgentApplicationCreateConsentAsync(
+        // await delegatedConsentService.EnsureBlueprintPermissionGrantAsync(
         //     clientAppId,  // <-- Receives setupConfig.ClientAppId
         //     tenantId,     // <-- Receives setupConfig.TenantId
         //     ct);

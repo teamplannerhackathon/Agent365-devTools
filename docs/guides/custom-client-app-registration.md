@@ -63,9 +63,9 @@ From the app's **Overview** page, copy the **Application (client) ID** (GUID for
 
 | Permission | Purpose |
 |-----------|---------|
-| `Application.ReadWrite.All` | Create and manage applications and Agent Blueprints |
 | `AgentIdentityBlueprint.ReadWrite.All` | Manage Agent Blueprint configurations (beta API) |
 | `AgentIdentityBlueprint.UpdateAuthProperties.All` | Update Agent Blueprint inheritable permissions (beta API) |
+| `Application.ReadWrite.All` | Create and manage applications and Agent Blueprints |
 | `DelegatedPermissionGrant.ReadWrite.All` | Grant permissions for agent blueprints |
 | `Directory.Read.All` | Read directory data for validation |
 
@@ -87,13 +87,13 @@ If the beta permissions (`AgentIdentityBlueprint.*`) are **not visible**, procee
    **Step 1**: Get your service principal ID and Graph resource ID:
    
    ```
-   GET https://graph.microsoft.com/v1.0/servicePrincipals?$filter=appId eq 'YOUR_CLIENT_APP_ID'&$select=id
+   https://graph.microsoft.com/v1.0/servicePrincipals?$filter=appId eq 'YOUR_CLIENT_APP_ID'&$select=id
    ```
    
    Copy the `id` value (this is your `SP_OBJECT_ID`)
    
    ```
-   GET https://graph.microsoft.com/v1.0/servicePrincipals?$filter=appId eq '00000003-0000-0000-c000-000000000000'&$select=id
+   https://graph.microsoft.com/v1.0/servicePrincipals?$filter=appId eq '00000003-0000-0000-c000-000000000000'&$select=id
    ```
    
    Copy the `id` value (this is your `GRAPH_RESOURCE_ID`)
@@ -102,7 +102,7 @@ If the beta permissions (`AgentIdentityBlueprint.*`) are **not visible**, procee
    
    Change method to **POST** and use this URL:
    ```
-   POST https://graph.microsoft.com/v1.0/oauth2PermissionGrants
+   https://graph.microsoft.com/v1.0/oauth2PermissionGrants
    ```
    
    **Request Body**:
@@ -119,8 +119,10 @@ If the beta permissions (`AgentIdentityBlueprint.*`) are **not visible**, procee
    Click **Run query** - you should get a `201 Created` response.
 
    **Verification**: Query the grant to confirm:
+   
+   Change method to **GET** and use this URL:
    ```
-   GET https://graph.microsoft.com/v1.0/oauth2PermissionGrants?$filter=clientId eq 'SP_OBJECT_ID_FROM_STEP1'
+   https://graph.microsoft.com/v1.0/oauth2PermissionGrants?$filter=clientId eq 'SP_OBJECT_ID_FROM_STEP1'
    ```
    
    The `scope` field should contain all 5 permission names.

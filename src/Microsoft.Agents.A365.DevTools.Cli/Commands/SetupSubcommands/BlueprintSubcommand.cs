@@ -318,7 +318,7 @@ internal static class BlueprintSubcommand
             var success = await retryHelper.ExecuteWithRetryAsync(
                 async ct =>
                 {
-                    return await delegatedConsentService.EnsureAgentApplicationCreateConsentAsync(
+                    return await delegatedConsentService.EnsureBlueprintPermissionGrantAsync(
                         clientAppId,
                         tenantId,
                         ct);
