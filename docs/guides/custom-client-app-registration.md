@@ -2,36 +2,27 @@
 
 ## Overview
 
-The Agent365 CLI requires a custom client app registration in your Entra ID tenant to authenticate and manage Agent Identity Blueprints. This guide covers the Agent365-specific requirements.
-
-**For general app registration steps**, see Microsoft's official documentation:
-- [Quickstart: Register an application](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app)
-- [Grant tenant-wide admin consent](https://learn.microsoft.com/en-us/entra/identity/enterprise-apps/grant-admin-consent)
-
-### CRITICAL: Delegated vs Application Permissions
-
-**You MUST use Delegated permissions (NOT Application permissions)** for all five required permissions.
-
-| Permission Type | When to Use | How Agent365 Uses It |
-|----------------|-------------|---------------------|
-| **Delegated** ("Scope") | User signs in interactively | **Agent365 CLI uses this** - You sign in, CLI acts on your behalf |
-| **Application** ("Role") | Service runs without user | **Don't use** - For background services/daemons only |
-
-**Why Delegated?**
-- You sign in interactively (`az login`, browser authentication)
-- CLI performs actions **as you** (audit trails show your identity)
-- More secure - limited by your actual permissions
-- Ensures accountability and compliance
-
-**Common mistake**: Adding `Directory.Read.All` as **Application** instead of **Delegated**.
+The Agent365 CLI requires a custom client app registration in your Entra ID tenant to authenticate and manage Agent Identity Blueprints.
 
 ## Quick Setup
 
 ### Prerequisites
 
-- **Azure role**: Global Administrator or Application Administrator
-- **Azure CLI**: Installed and signed in (`az login`)
-- **Tenant access**: Entra ID tenant where you'll deploy Agent365
+**To register the app** (Steps 1-2):
+- Any developer with basic Entra ID access can register an application
+
+**To add permissions and grant consent** (Steps 3-4):
+- **One of these admin roles** is required:
+  - **Application Administrator** (recommended - can manage app registrations and grant consent)
+  - **Cloud Application Administrator** (can manage app registrations and grant consent)
+  - **Global Administrator** (has all permissions, but not required)
+
+> **Don't have admin access?** You can complete Steps 1-2 yourself, then ask your tenant administrator to complete Steps 3-4. Provide them:
+> - Your **Application (client) ID** from Step 2
+> - A link to this guide: [Custom Client App Registration](#3-configure-api-permissions)
+
+**Optional**:
+- Azure CLI (only needed if you prefer command-line automation instead of Graph Explorer)
 
 ### 1. Register Application
 
@@ -54,6 +45,8 @@ From the app's **Overview** page, copy the **Application (client) ID** (GUID for
 
 ### 3. Configure API Permissions
 
+> **⚠️ Admin privileges required for this step and Step 4.** If you're a developer without admin access, send your **Application (client) ID** from Step 2 to your tenant administrator and have them complete Steps 3-4.
+
 **Choose Your Method**: The two `AgentIdentityBlueprint.*` permissions are beta APIs and may not be visible in the Azure Portal UI. You can either:
 - **Option A**: Use Azure Portal for all permissions (if beta permissions are visible)
 - **Option B**: Use Microsoft Graph API to add all permissions (recommended if beta permissions not visible)
@@ -66,6 +59,8 @@ From the app's **Overview** page, copy the **Application (client) ID** (GUID for
 2. Click **Add a permission** → **Microsoft Graph** → **Delegated permissions**
 3. Search for and add these 5 permissions:
 
+> **Important**: You MUST use **Delegated permissions** (NOT Application permissions). The CLI authenticates interactively - you sign in, and it acts on your behalf. See [Troubleshooting](#wrong-permission-type-delegated-vs-application) if you accidentally add Application permissions.
+
 | Permission | Purpose |
 |-----------|---------|
 | `Application.ReadWrite.All` | Create and manage applications and Agent Blueprints |
@@ -74,10 +69,10 @@ From the app's **Overview** page, copy the **Application (client) ID** (GUID for
 | `DelegatedPermissionGrant.ReadWrite.All` | Grant permissions for agent blueprints |
 | `Directory.Read.All` | Read directory data for validation |
 
-4. Click **Grant admin consent for [Your Tenant]** (requires Global Admin or Application Admin role)
+4. Click **Grant admin consent for [Your Tenant]**
+   - **Why is this required?** Agent Identity Blueprints are tenant-wide resources that multiple users and applications can reference. Without tenant-wide consent, the CLI will fail during authentication.
+   - **What if it fails?** You need Application Administrator, Cloud Application Administrator, or Global Administrator role. Ask your tenant admin for help.
 5. Verify all permissions show green checkmarks under "Status"
-
-**Important**: Use **Delegated permissions** (NOT Application permissions). The CLI requires delegated permissions because you sign in interactively.
 
 If the beta permissions (`AgentIdentityBlueprint.*`) are **not visible**, proceed to **Option B** below.
 
@@ -85,106 +80,54 @@ If the beta permissions (`AgentIdentityBlueprint.*`) are **not visible**, procee
 
 **Use this method if `AgentIdentityBlueprint.*` permissions are not visible in Azure Portal**.
 
-##### Step 1: Add permissions to app manifest
+1. **Open Graph Explorer**: Go to https://developer.microsoft.com/graph/graph-explorer
+2. **Sign in** with your admin account (Application Administrator or Cloud Application Administrator)
+3. **Grant admin consent using Graph API**:
 
-First, ensure you're signed in with admin privileges:
+   **Step 1**: Get your service principal ID and Graph resource ID:
+   
+   ```
+   GET https://graph.microsoft.com/v1.0/servicePrincipals?$filter=appId eq 'YOUR_CLIENT_APP_ID'&$select=id
+   ```
+   
+   Copy the `id` value (this is your `SP_OBJECT_ID`)
+   
+   ```
+   GET https://graph.microsoft.com/v1.0/servicePrincipals?$filter=appId eq '00000003-0000-0000-c000-000000000000'&$select=id
+   ```
+   
+   Copy the `id` value (this is your `GRAPH_RESOURCE_ID`)
 
-```bash
-az login
-```
+   **Step 2**: Grant admin consent with all 5 permissions:
+   
+   Change method to **POST** and use this URL:
+   ```
+   POST https://graph.microsoft.com/v1.0/oauth2PermissionGrants
+   ```
+   
+   **Request Body**:
+   ```json
+   {
+     "clientId": "SP_OBJECT_ID_FROM_STEP1",
+     "consentType": "AllPrincipals",
+     "principalId": null,
+     "resourceId": "GRAPH_RESOURCE_ID_FROM_STEP1",
+     "scope": "Application.ReadWrite.All Directory.Read.All DelegatedPermissionGrant.ReadWrite.All AgentIdentityBlueprint.ReadWrite.All AgentIdentityBlueprint.UpdateAuthProperties.All"
+   }
+   ```
 
-Update the app registration's `requiredResourceAccess` to include all 5 permissions:
+   Click **Run query** - you should get a `201 Created` response.
 
-```bash
-# Replace YOUR_CLIENT_APP_ID with your Application (client) ID from Step 2
-az ad app update --id YOUR_CLIENT_APP_ID --required-resource-accesses @- <<EOF
-[
-  {
-    "resourceAppId": "00000003-0000-0000-c000-000000000000",
-    "resourceAccess": [
-      {
-        "id": "1bfefb4e-e0b5-418b-a88f-73c46d2cc8e9",
-        "type": "Scope"
-      },
-      {
-        "id": "e1fe6dd8-ba31-4d61-89e7-88639da4683d",
-        "type": "Scope"
-      },
-      {
-        "id": "06b708a9-e830-4db3-a914-8e69da51d44f",
-        "type": "Scope"
-      },
-      {
-        "id": "8f6a01e7-0391-4ee5-aa22-a3af122cef27",
-        "type": "Scope"
-      },
-      {
-        "id": "06da0dbc-49e2-44d2-8312-53f166ab848a",
-        "type": "Scope"
-      }
-    ]
-  }
-]
-EOF
-```
+   **Verification**: Query the grant to confirm:
+   ```
+   GET https://graph.microsoft.com/v1.0/oauth2PermissionGrants?$filter=clientId eq 'SP_OBJECT_ID_FROM_STEP1'
+   ```
+   
+   The `scope` field should contain all 5 permission names.
 
-> **Permission ID mapping**:
-> - `1bfefb4e-e0b5-418b-a88f-73c46d2cc8e9` = `Application.ReadWrite.All`
-> - `e1fe6dd8-ba31-4d61-89e7-88639da4683d` = `Directory.Read.All`
-> - `06b708a9-e830-4db3-a914-8e69da51d44f` = `DelegatedPermissionGrant.ReadWrite.All`
-> - `8f6a01e7-0391-4ee5-aa22-a3af122cef27` = `AgentIdentityBlueprint.ReadWrite.All`
-> - `06da0dbc-49e2-44d2-8312-53f166ab848a` = `AgentIdentityBlueprint.UpdateAuthProperties.All`
-
-##### Step 2: Create service principal (if not exists)
-
-```bash
-# This creates the enterprise app / service principal for your app registration
-az ad sp create --id YOUR_CLIENT_APP_ID
-```
-
-If the service principal already exists, this command will return its details (safe to run).
-
-##### Step 3: Grant admin consent via API
-
-Get the service principal object ID:
-
-```bash
-SP_OBJECT_ID=$(az ad sp list --filter "appId eq 'YOUR_CLIENT_APP_ID'" --query "[0].id" -o tsv)
-echo "Service Principal Object ID: $SP_OBJECT_ID"
-```
-
-Get Microsoft Graph service principal ID:
-
-```bash
-GRAPH_SP_ID=$(az ad sp list --filter "appId eq '00000003-0000-0000-c000-000000000000'" --query "[0].id" -o tsv)
-echo "Microsoft Graph SP ID: $GRAPH_SP_ID"
-```
-
-Create the admin consent grant:
-
-```bash
-az rest --method POST \
-  --url "https://graph.microsoft.com/v1.0/oauth2PermissionGrants" \
-  --body "{
-    \"clientId\": \"$SP_OBJECT_ID\",
-    \"consentType\": \"AllPrincipals\",
-    \"principalId\": null,
-    \"resourceId\": \"$GRAPH_SP_ID\",
-    \"scope\": \"Application.ReadWrite.All Directory.Read.All DelegatedPermissionGrant.ReadWrite.All AgentIdentityBlueprint.ReadWrite.All AgentIdentityBlueprint.UpdateAuthProperties.All\"
-  }"
-```
-
-**Verification**: Run this command to verify the grant was created:
-
-```bash
-az rest --method GET \
-  --url "https://graph.microsoft.com/v1.0/oauth2PermissionGrants?\$filter=clientId eq '$SP_OBJECT_ID'" \
-  --query "value[0].scope" -o tsv
-```
-
-You should see all 5 permission names listed.
-
-**Critical**: **Do NOT click "Grant admin consent" in Azure Portal** after using the API method. This will remove the beta permissions in tenants where they're not visible in the UI.
+**Important**: 
+- The `consentType: "AllPrincipals"` in the request body grants **tenant-wide admin consent**, which is required because Agent Identity Blueprints are tenant-wide resources.
+- **Do NOT click "Grant admin consent" in Azure Portal** after using this method, as it will remove the beta permissions.
 
 ### 4. Use in Agent365 CLI
 
@@ -200,6 +143,31 @@ The CLI automatically validates:
 - Admin consent has been granted
 
 ## Troubleshooting
+
+### Wrong Permission Type (Delegated vs Application)
+
+**Symptom**: CLI fails with authentication errors or permission denied errors.
+
+**Root cause**: You added **Application permissions** instead of **Delegated permissions**.
+
+| Permission Type | When to Use | How Agent365 Uses It |
+|----------------|-------------|---------------------|
+| **Delegated** ("Scope") | User signs in interactively | **Agent365 CLI uses this** - You sign in, CLI acts on your behalf |
+| **Application** ("Role") | Service runs without user | **Don't use** - For background services/daemons only |
+
+**Why Delegated?**
+- You sign in interactively (browser authentication)
+- CLI performs actions **as you** (audit trails show your identity)
+- More secure - limited by your actual permissions
+- Ensures accountability and compliance
+
+**Solution**: 
+1. Go to Azure Portal → App registrations → Your app → API permissions
+2. **Remove** any Application permissions (these show as "Admin" in the Type column)
+3. **Add** the same permissions as **Delegated** permissions
+4. Grant admin consent again
+
+**Common mistake**: Adding `Directory.Read.All` as **Application** instead of **Delegated**.
 
 ### Beta Permissions Disappear After Portal Admin Consent
 
