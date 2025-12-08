@@ -80,27 +80,31 @@ If the beta permissions (`AgentIdentityBlueprint.*`) are **not visible**, procee
 
 **Use this method if `AgentIdentityBlueprint.*` permissions are not visible in Azure Portal**.
 
+> **⚠️ WARNING**: If you use this API method, **do NOT use Azure Portal's "Grant admin consent" button** afterward. The API method grants admin consent automatically, and using the Portal button will **delete your beta permissions**. See [troubleshooting section](#beta-permissions-disappear-after-portal-admin-consent) for details.
+
 1. **Open Graph Explorer**: Go to https://developer.microsoft.com/graph/graph-explorer
 2. **Sign in** with your admin account (Application Administrator or Cloud Application Administrator)
 3. **Grant admin consent using Graph API**:
 
    **Step 1**: Get your service principal ID and Graph resource ID:
    
+   Set method to **GET** and use this URL:
    ```
    https://graph.microsoft.com/v1.0/servicePrincipals?$filter=appId eq 'YOUR_CLIENT_APP_ID'&$select=id
    ```
    
-   Copy the `id` value (this is your `SP_OBJECT_ID`)
+   Click **Run query**. If the query fails with a permissions error, click the **Modify permissions** tab, consent to the required permissions, then click **Run query** again. Copy the `id` value (this is your `SP_OBJECT_ID`)
    
+   Set method to **GET** and use this URL:
    ```
    https://graph.microsoft.com/v1.0/servicePrincipals?$filter=appId eq '00000003-0000-0000-c000-000000000000'&$select=id
    ```
    
-   Copy the `id` value (this is your `GRAPH_RESOURCE_ID`)
+   Click **Run query**. If the query fails with a permissions error, click the **Modify permissions** tab, consent to the required permissions, then click **Run query** again. Copy the `id` value (this is your `GRAPH_RESOURCE_ID`)
 
    **Step 2**: Grant admin consent with all 5 permissions:
    
-   Change method to **POST** and use this URL:
+   Set method to **POST** and use this URL:
    ```
    https://graph.microsoft.com/v1.0/oauth2PermissionGrants
    ```
@@ -116,20 +120,18 @@ If the beta permissions (`AgentIdentityBlueprint.*`) are **not visible**, procee
    }
    ```
 
-   Click **Run query** - you should get a `201 Created` response.
+   Click **Run query**. If the query fails with a permissions error (likely DelegatedPermissionGrant.ReadWrite.All), click the **Modify permissions** tab, consent to DelegatedPermissionGrant.ReadWrite.All, then click **Run query** again. You should get a `201 Created` response.
 
    **Verification**: Query the grant to confirm:
    
-   Change method to **GET** and use this URL:
+   Set method to **GET** and use this URL:
    ```
    https://graph.microsoft.com/v1.0/oauth2PermissionGrants?$filter=clientId eq 'SP_OBJECT_ID_FROM_STEP1'
    ```
    
-   The `scope` field should contain all 5 permission names.
+   Click **Run query**. If the query fails with a permissions error, click the **Modify permissions** tab, consent to the required permissions, then click **Run query** again. The `scope` field should contain all 5 permission names.
 
-**Important**: 
-- The `consentType: "AllPrincipals"` in the request body grants **tenant-wide admin consent**, which is required because Agent Identity Blueprints are tenant-wide resources.
-- **Do NOT click "Grant admin consent" in Azure Portal** after using this method, as it will remove the beta permissions.
+> **⚠️ CRITICAL WARNING**: The `consentType: "AllPrincipals"` in the POST request above **already grants tenant-wide admin consent**. **DO NOT click "Grant admin consent" in Azure Portal** after using this API method - doing so will **delete your beta permissions** because the Portal UI cannot see beta permissions and will overwrite your API-granted consent with only the visible permissions.
 
 ### 4. Use in Agent365 CLI
 
@@ -177,7 +179,18 @@ The CLI automatically validates:
 
 **Root cause**: Azure Portal doesn't show beta permissions in the UI, so when you click "Grant admin consent" in Portal, it only grants the *visible* permissions and overwrites the API-granted consent.
 
-**Solution**: Never use Portal admin consent after API method. The API method already grants admin consent (consentType: "AllPrincipals").
+**Why this happens**:
+1. You use the Graph API (Option B) to add all 5 permissions including beta permissions
+2. The API call with `consentType: "AllPrincipals"` **already grants tenant-wide admin consent**
+3. You go to Azure Portal and see only 3 permissions (the beta permissions are invisible)
+4. You click "Grant admin consent" in Portal thinking you need to
+5. Portal overwrites your API-granted consent with **only the 3 visible permissions**
+6. Your 2 beta permissions are now deleted
+
+**Solution**: 
+- **Never use Portal admin consent after API method** - the API method already grants admin consent
+- If you accidentally deleted beta permissions, re-run the Option B API steps to restore them
+- You can verify admin consent was granted by checking the API verification step - if the query returns your permissions, consent is already granted
 
 ### Validation Errors
 
