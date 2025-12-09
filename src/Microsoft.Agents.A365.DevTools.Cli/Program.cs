@@ -75,7 +75,7 @@ class Program
             var platformDetector = serviceProvider.GetRequiredService<PlatformDetector>();
 
             // Add commands
-            rootCommand.AddCommand(DevelopCommand.CreateCommand(developLogger, configService, executor, authService));
+            rootCommand.AddCommand(DevelopCommand.CreateCommand(developLogger, configService, executor, authService, graphApiService));
             rootCommand.AddCommand(DevelopMcpCommand.CreateCommand(developLogger, toolingService));
             rootCommand.AddCommand(SetupCommand.CreateCommand(setupLogger, configService, executor, 
                 deploymentService, botConfigurator, azureValidator, webAppCreator, platformDetector, graphApiService));
@@ -93,7 +93,6 @@ class Program
             rootCommand.AddCommand(QueryEntraCommand.CreateCommand(queryEntraLogger, configService, executor, graphApiService));
             rootCommand.AddCommand(CleanupCommand.CreateCommand(cleanupLogger, configService, botConfigurator, executor, graphApiService));
             rootCommand.AddCommand(PublishCommand.CreateCommand(publishLogger, configService, graphApiService, manifestTemplateService));
-            rootCommand.AddCommand(McpServerAuthCommand.CreateCommand(getBearerTokenLogger, configService, authService, graphApiService));
 
             // Wrap all command handlers with exception handling
             // Build with middleware for global exception handling
