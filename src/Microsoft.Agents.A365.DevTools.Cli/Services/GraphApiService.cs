@@ -660,26 +660,27 @@ public class GraphApiService
 
     /// <summary>
     /// Deletes the specified agent identity application from the tenant using delegated permissions.
+    /// This method deletes the service principal object, not the application registration.
     /// </summary>
     /// <param name="tenantId">The unique identifier of the Azure Active Directory tenant containing the agent identity application.</param>
-    /// <param name="identityId">The unique identifier of the agent identity application to delete.</param>
+    /// <param name="applicationId">The unique identifier of the agent identity application to delete.</param>
     /// <param name="cancellationToken">A cancellation token that can be used to cancel the delete operation.</param>
     /// <returns>True if deletion succeeded or resource not found; false otherwise</returns>
     public async Task<bool> DeleteAgentIdentityAsync(
         string tenantId,
-        string identityId,
+        string applicationId,
         CancellationToken cancellationToken = default)
     {
         try
         {
-            _logger.LogInformation("Deleting agent identity application: {identityId}", identityId);
+            _logger.LogInformation("Deleting agent identity application: {applicationId}", applicationId);
 
             // Agent Identity deletion requires special delegated permission scope
             var requiredScopes = new[] { "AgentIdentityBlueprint.ReadWrite.All" };
 
             if (_tokenProvider == null)
             {
-                _logger.LogError("Token provider is not configured. Agent Identity deletion requires interactive authentication.");
+                _logger.LogError("Token provider is not configured. Agent Identity deletion requires delegated permissions via interactive authentication.");
                 _logger.LogError("Please ensure the GraphApiService is initialized with a token provider.");
                 return false;
             }
@@ -688,7 +689,7 @@ public class GraphApiService
             _logger.LogInformation("A browser window will open for authentication.");
 
             // Use the special servicePrincipals endpoint for deletion
-            var deletePath = $"/beta/servicePrincipals/{identityId}";
+            var deletePath = $"/beta/servicePrincipals/{applicationId}";
 
             // Use GraphDeleteAsync with the special scopes required for identity operations
             return await GraphDeleteAsync(
