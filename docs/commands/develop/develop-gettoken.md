@@ -17,7 +17,7 @@ a365 develop gettoken [options]
 | Option | Alias | Description | Default |
 |--------|-------|-------------|---------|
 | `--config` | `-c` | Configuration file path | `a365.config.json` |
-| `--app-id` | | Application (client) ID for authentication | ClientAppId from config |
+| `--app-id` | | Application (client) ID for authentication | `clientAppId` from config |
 | `--manifest` | `-m` | Path to ToolingManifest.json | `<deploymentProjectPath>/ToolingManifest.json` |
 | `--scopes` | | Specific scopes to request (space-separated) | Read from ToolingManifest.json |
 | `--output` | `-o` | Output format: table, json, or raw | `table` |
@@ -34,10 +34,26 @@ a365 develop gettoken [options]
 ### NOT for Production
 - Production agents use inheritable permissions (`a365 setup permissions mcp`)
 
+## Understanding the Application ID
+
+This command retrieves tokens for a **single application**, which you can specify in two ways:
+
+1. **Using config file** (default): `clientAppId` from `a365.config.json`
+2. **Using command line**: `--app-id` parameter (overrides config)
+
+The application you're getting a token for should be your **custom client app** that has the required MCP permissions. This is typically the same application you use across development commands.
+
+**Example**: If your `a365.config.json` has `clientAppId: "12345678-..."`, running `a365 develop gettoken` will retrieve a token for that application.
+
+> **Note**: For more details about the client application setup and how it's used across development commands, see the [develop addpermissions documentation](./develop-addpermissions.md#understanding-the-application-id).
+
 ## Prerequisites
 
 1. **Azure CLI**: Run `az login` before using this command
-2. **Configuration or Client App ID**: Either `a365.config.json` with `clientAppId` or use `--app-id` parameter
+2. **Client Application**: 
+   - Must exist in Azure AD
+   - Must have the required MCP scopes configured
+   - Can be configured in `a365.config.json` as `clientAppId` OR provided via `--app-id`
 3. **ToolingManifest.json** (optional): Can be bypassed with `--scopes` parameter
 
 ## ToolingManifest.json Structure
@@ -87,7 +103,7 @@ curl -H "Authorization: Bearer $TOKEN" https://agent365.svc.cloud.microsoft/agen
 
 ## Authentication Flow
 
-1. **Client Application**: Uses `--app-id` or `ClientAppId` from config
+1. **Application Selection**: Uses `--app-id` or `clientAppId` from config
 2. **Scope Resolution**: Uses `--scopes` or reads from `ToolingManifest.json`
 3. **Token Acquisition**: Opens browser for interactive OAuth2 authentication
 4. **Token Caching**: Cached in local storage for reuse (until expiration or `--force-refresh`)
