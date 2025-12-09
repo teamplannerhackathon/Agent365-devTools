@@ -354,14 +354,17 @@ public class ConfigurationWizardService : IConfigurationWizardService
                 input = Math.Max(1, defaultIndex).ToString();
             }
 
-            if (int.TryParse(input, out int index) && index >= 1 && index <= resourceGroups.Count)
+            if (int.TryParse(input, out int index))
             {
-                return resourceGroups[index - 1].Name;
-            }
-            else if (index == resourceGroups.Count + 1)
-            {
-                // Create new resource group
-                return $"{Environment.UserName}-agent365-rg";
+                if (index >= 1 && index <= resourceGroups.Count)
+                {
+                    return resourceGroups[index - 1].Name;
+                }
+                else if (index == resourceGroups.Count + 1)
+                {
+                    // Create new resource group
+                    return $"{Environment.UserName}-agent365-rg";
+                }
             }
 
             Console.WriteLine($"Please enter a number between 1 and {resourceGroups.Count + 1}");
