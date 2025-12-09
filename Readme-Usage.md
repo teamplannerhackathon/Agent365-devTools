@@ -87,6 +87,7 @@ a365 setup
 a365 publish
 
 # Deploy application binaries (for Azure-hosted agents)
+# Can be run before or after publish
 a365 deploy
 ```
 
