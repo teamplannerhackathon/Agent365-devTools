@@ -44,17 +44,13 @@ public class AuthenticationService
         IEnumerable<string>? scopes = null,
         bool useInteractiveBrowser = false)
     {
-        // Build cache key that includes scopes if provided
-        string cacheKey;
-        if (scopes != null && scopes.Any())
-        {
-            var scopeString = string.Join(",", scopes.OrderBy(s => s));
-            cacheKey = $"{resourceUrl}:scopes:{scopeString}";
-        }
-        else
-        {
-            cacheKey = resourceUrl;
-        }
+        // Build cache key based on resource and tenant only
+        // Azure AD returns tokens with all consented scopes regardless of which scopes are requested,
+        // so we don't include scopes in the cache key to avoid duplicate cache entries for the same token.
+        // The scopes parameter is still passed to Azure AD for incremental consent and validation.
+        string cacheKey = string.IsNullOrWhiteSpace(tenantId)
+            ? resourceUrl
+            : $"{resourceUrl}:tenant:{tenantId}";
 
         // Try to load cached token for this cache key
         if (!forceRefresh && File.Exists(_tokenCachePath))
@@ -138,8 +134,9 @@ public class AuthenticationService
             // Determine which scope to use based on the resource URL or App ID
             if (explicitScopes != null && explicitScopes.Any())
             {
-                // Format explicit scopes with resource App ID prefix
-                // Format: {resourceAppId}/{scope} (e.g., "ea9ffc3e-8a23-4a7d-836d-234d7c7565c1/McpServers.Mail.All")
+                // Construct scope strings for the token request by prefixing with the resource App ID
+                // This creates the format required by Azure AD for the TokenRequestContext: {resourceAppId}/{scope}
+                // Example: "ea9ffc3e-8a23-4a7d-836d-234d7c7565c1/McpServers.Mail.All"
                 scopes = explicitScopes.Select(s => $"{resourceUrl}/{s}").ToArray();
                 _logger.LogInformation("Using explicit scopes for authentication: {Scopes}", string.Join(", ", explicitScopes));
                 _logger.LogInformation("Formatted as: {FormattedScopes}", string.Join(", ", scopes));
@@ -182,9 +179,9 @@ public class AuthenticationService
                     _logger.LogInformation("Using custom resource for authentication: {Resource}", resourceUrl);
                 }
                 scopes = [scope];
+                _logger.LogInformation($"Token scope: {scope}");
             }
 
-            _logger.LogInformation("Token scope(s): {Scopes}", scopes);
             _logger.LogInformation("Authenticating for tenant: {TenantId}", effectiveTenantId);
 
             // Use provided client ID or default to PowerShell client ID
@@ -244,8 +241,6 @@ public class AuthenticationService
                     }
                 });
             }
-
-
 
             var tokenRequestContext = new TokenRequestContext(scopes);
             var tokenResult = await credential.GetTokenAsync(tokenRequestContext, default);
