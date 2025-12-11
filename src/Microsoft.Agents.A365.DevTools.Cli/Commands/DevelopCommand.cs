@@ -820,9 +820,16 @@ public static class DevelopCommand
     {
         var command = new Command("start-mock-tooling-server", "Start the Mock Tooling Server for local development and testing");
 
-        command.SetHandler(async () =>
+        var portOption = new Option<int?>(
+            ["--port", "-p"],
+            description: "Port number to run the server on (default: 5309)"
+        );
+        command.AddOption(portOption);
+
+        command.SetHandler(async (port) =>
         {
-            logger.LogInformation("Starting Mock Tooling Server...");
+            var serverPort = port ?? 5309;
+            logger.LogInformation("Starting Mock Tooling Server on port {Port}...", serverPort);
 
             try
             {
@@ -861,13 +868,14 @@ public static class DevelopCommand
                 }
 
                 logger.LogInformation("Found Mock Tooling Server project at: {ProjectDir}", mockServerProjectDir);
-                logger.LogInformation("Starting server with 'dotnet run'...");
+                logger.LogInformation("Starting server on port {Port} with 'dotnet run'...", serverPort);
                 logger.LogInformation("Press Ctrl+C to stop the server");
 
                 // Execute dotnet run with streaming output so user can see real-time logs and interact with the server
+                var runArgs = port.HasValue ? $"run --urls http://localhost:{serverPort}" : "run";
                 var result = await commandExecutor.ExecuteWithStreamingAsync(
                     "dotnet",
-                    "run",
+                    runArgs,
                     workingDirectory: mockServerProjectDir,
                     outputPrefix: "[MockServer] ",
                     interactive: true
@@ -890,7 +898,7 @@ public static class DevelopCommand
             {
                 logger.LogError(ex, "Failed to start Mock Tooling Server: {Message}", ex.Message);
             }
-        });
+        }, portOption);
 
         return command;
     }
