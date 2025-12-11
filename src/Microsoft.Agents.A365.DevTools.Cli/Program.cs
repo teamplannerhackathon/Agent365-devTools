@@ -59,7 +59,6 @@ class Program
             var cleanupLogger = serviceProvider.GetRequiredService<ILogger<CleanupCommand>>();
             var publishLogger = serviceProvider.GetRequiredService<ILogger<PublishCommand>>();
             var developLogger = serviceProvider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<Program>>();
-            var getBearerTokenLogger = serviceProvider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<Program>>();
             var configService = serviceProvider.GetRequiredService<IConfigService>();
             var executor = serviceProvider.GetRequiredService<CommandExecutor>();
             var authService = serviceProvider.GetRequiredService<AuthenticationService>();

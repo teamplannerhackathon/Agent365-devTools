@@ -359,8 +359,6 @@ public class GetTokenSubcommandTests
         manifest!.McpServers.Should().BeEmpty();
     }
 
-
-
     #endregion
 
     #region Output Format Tests

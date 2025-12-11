@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 using Microsoft.Agents.A365.DevTools.Cli.Constants;
+using Microsoft.Agents.A365.DevTools.Cli.Helpers;
 using Microsoft.Agents.A365.DevTools.Cli.Models;
 using Microsoft.Agents.A365.DevTools.Cli.Services;
 using Microsoft.Extensions.Logging;
@@ -117,7 +118,7 @@ internal static class AddPermissionsSubcommand
 
                 // Determine which scopes to add
                 string[] requestedScopes;
-                HashSet<string> uniqueAudiences = new();
+                string[] uniqueAudiences;
                 
                 if (scopes != null && scopes.Length > 0)
                 {
@@ -126,22 +127,38 @@ internal static class AddPermissionsSubcommand
                     logger.LogInformation("Using user-specified scopes: {Scopes}", string.Join(", ", requestedScopes));
                     logger.LogInformation("");
                     
-                    // For explicit scopes, we still need to read audiences from manifest
+                    // Try to read audiences from manifest if it exists
                     if (File.Exists(manifestPath))
                     {
-                        var manifestJson = await File.ReadAllTextAsync(manifestPath);
-                        var toolingManifest = JsonSerializer.Deserialize<ToolingManifest>(manifestJson);
+                        // Use ManifestHelper to get audiences with fallback to mappings
+                        uniqueAudiences = await ManifestHelper.GetRequiredAudiencesAsync(manifestPath);
+                    }
+                    else
+                    {
+                        // No manifest - need to derive audiences from scope names using ServerScopeMappings
+                        logger.LogInformation("No manifest found. Attempting to derive audiences from scope names...");
                         
-                        if (toolingManifest?.McpServers != null && toolingManifest.McpServers.Length > 0)
+                        var derivedAudiences = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                        
+                        // Search through the scope mappings to find matching audiences
+                        foreach (var scope in requestedScopes)
                         {
-                            foreach (var server in toolingManifest.McpServers)
+                            // Look for this scope in the ServerScopeMappings
+                            var matchingMapping = McpConstants.ServerScopeMappings.ServerToScope
+                                .FirstOrDefault(kvp => kvp.Value.Scope.Equals(scope, StringComparison.OrdinalIgnoreCase));
+                            
+                            if (!string.IsNullOrEmpty(matchingMapping.Key) && !string.IsNullOrWhiteSpace(matchingMapping.Value.Audience))
                             {
-                                if (!string.IsNullOrWhiteSpace(server.Audience))
-                                {
-                                    uniqueAudiences.Add(server.Audience);
-                                }
+                                derivedAudiences.Add(matchingMapping.Value.Audience);
+                                logger.LogInformation("  Mapped scope '{Scope}' to audience '{Audience}'", scope, matchingMapping.Value.Audience);
+                            }
+                            else
+                            {
+                                logger.LogWarning("  Could not find audience mapping for scope: {Scope}", scope);
                             }
                         }
+                        
+                        uniqueAudiences = derivedAudiences.ToArray();
                     }
                 }
                 else
@@ -161,7 +178,10 @@ internal static class AddPermissionsSubcommand
 
                     logger.LogInformation("Reading MCP server configuration from: {Path}", manifestPath);
 
-                    // Parse ToolingManifest.json
+                    // Use ManifestHelper to extract scopes (includes fallback to mappings and McpServersMetadata.Read.All)
+                    requestedScopes = await ManifestHelper.GetRequiredScopesAsync(manifestPath);
+
+                    // Parse ToolingManifest.json to get audiences
                     var manifestJson = await File.ReadAllTextAsync(manifestPath);
                     var toolingManifest = JsonSerializer.Deserialize<ToolingManifest>(manifestJson);
 
@@ -173,23 +193,10 @@ internal static class AddPermissionsSubcommand
                         return;
                     }
 
-                    // Collect all unique scopes and audiences from manifest
-                    var scopeSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                    
-                    foreach (var server in toolingManifest.McpServers)
-                    {
-                        if (!string.IsNullOrWhiteSpace(server.Scope))
-                        {
-                            scopeSet.Add(server.Scope);
-                        }
-                        
-                        if (!string.IsNullOrWhiteSpace(server.Audience))
-                        {
-                            uniqueAudiences.Add(server.Audience);
-                        }
-                    }
+                    // Use ToolingManifest helper method to extract audiences
+                    uniqueAudiences = toolingManifest.GetAllAudiences();
 
-                    if (scopeSet.Count == 0)
+                    if (requestedScopes.Length == 0)
                     {
                         logger.LogError("No scopes found in ToolingManifest.json");
                         logger.LogInformation("You can specify scopes explicitly with --scopes option.");
@@ -197,23 +204,22 @@ internal static class AddPermissionsSubcommand
                         return;
                     }
 
-                    requestedScopes = scopeSet.ToArray();
                     logger.LogInformation("Collected {Count} unique scope(s) from manifest: {Scopes}", 
                         requestedScopes.Length, string.Join(", ", requestedScopes));
                 }
 
-                if (uniqueAudiences.Count == 0)
+                if (uniqueAudiences.Length == 0)
                 {
                     logger.LogWarning("No audiences found in ToolingManifest.json. Cannot determine resource application IDs.");
                     logger.LogInformation("Note: Each MCP server should have an 'audience' field specifying the resource API.");
                     logger.LogInformation("");
                     logger.LogInformation("Using Agent 365 Tools resource as fallback...");
                     var environment = setupConfig?.Environment ?? "prod";
-                    uniqueAudiences.Add(ConfigConstants.GetAgent365ToolsResourceAppId(environment));
+                    uniqueAudiences = new[] { ConfigConstants.GetAgent365ToolsResourceAppId(environment) };
                 }
 
                 logger.LogInformation("Found {Count} unique audience(s): {Audiences}", 
-                    uniqueAudiences.Count, string.Join(", ", uniqueAudiences));
+                    uniqueAudiences.Length, string.Join(", ", uniqueAudiences));
                 logger.LogInformation("");
 
                 // Dry run mode
@@ -239,55 +245,7 @@ internal static class AddPermissionsSubcommand
                 logger.LogInformation("");
 
                 // Determine tenant ID (from config or detect from Azure CLI)
-                string tenantId = string.Empty;
-                if (setupConfig != null && !string.IsNullOrWhiteSpace(setupConfig.TenantId))
-                {
-                    tenantId = setupConfig.TenantId;
-                }
-                else
-                {
-                    // When config is not available or tenant ID is missing, try to detect from Azure CLI
-                    logger.LogInformation("No tenant ID in config. Attempting to detect from Azure CLI context...");
-                    
-                    try
-                    {
-                        var executor = new CommandExecutor(
-                            Microsoft.Extensions.Logging.Abstractions.NullLogger<CommandExecutor>.Instance);
-                        
-                        var result = await executor.ExecuteAsync(
-                            "az",
-                            "account show --query tenantId -o tsv",
-                            captureOutput: true,
-                            suppressErrorLogging: true);
-
-                        if (result.Success && !string.IsNullOrWhiteSpace(result.StandardOutput))
-                        {
-                            tenantId = result.StandardOutput.Trim();
-                            logger.LogInformation("Detected tenant ID from Azure CLI: {TenantId}", tenantId);
-                        }
-                        else
-                        {
-                            logger.LogWarning("Could not detect tenant ID from Azure CLI.");
-                            logger.LogWarning("You may need to run 'az login' first.");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.LogWarning("Failed to detect tenant ID from Azure CLI: {Message}", ex.Message);
-                    }
-                    
-                    if (string.IsNullOrWhiteSpace(tenantId))
-                    {
-                        logger.LogInformation("");
-                        logger.LogInformation("For best results, either:");
-                        logger.LogInformation("  1. Run 'az login' to set Azure CLI context");
-                        logger.LogInformation("  2. Create a config file with: a365 config init");
-                        logger.LogInformation("");
-                        
-                        // Use empty string as fallback
-                        tenantId = string.Empty;
-                    }
-                }
+                string tenantId = await TenantDetectionHelper.DetectTenantIdAsync(setupConfig, logger) ?? string.Empty;
 
                 int successCount = 0;
                 int failureCount = 0;
@@ -331,8 +289,8 @@ internal static class AddPermissionsSubcommand
 
                 // Summary
                 logger.LogInformation("=== Summary ===");
-                logger.LogInformation("Succeeded: {SuccessCount}/{Total}", successCount, uniqueAudiences.Count);
-                logger.LogInformation("Failed: {FailureCount}/{Total}", failureCount, uniqueAudiences.Count);
+                logger.LogInformation("Succeeded: {SuccessCount}/{Total}", successCount, uniqueAudiences.Length);
+                logger.LogInformation("Failed: {FailureCount}/{Total}", failureCount, uniqueAudiences.Length);
                 logger.LogInformation("");
 
                 if (failureCount == 0)

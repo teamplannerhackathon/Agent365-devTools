@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 using Microsoft.Agents.A365.DevTools.Cli.Constants;
+using Microsoft.Agents.A365.DevTools.Cli.Helpers;
 using Microsoft.Agents.A365.DevTools.Cli.Models;
 using Microsoft.Agents.A365.DevTools.Cli.Services;
 using Microsoft.Extensions.Logging;
@@ -127,29 +128,10 @@ internal static class GetTokenSubcommand
 
                     logger.LogInformation("Reading MCP server configuration from: {Path}", manifestPath);
 
-                    // Parse ToolingManifest.json
-                    var manifestJson = await File.ReadAllTextAsync(manifestPath);
-                    var toolingManifest = JsonSerializer.Deserialize<ToolingManifest>(manifestJson);
+                    // Use ManifestHelper to extract scopes (includes fallback to mappings and McpServersMetadata.Read.All)
+                    requestedScopes = await ManifestHelper.GetRequiredScopesAsync(manifestPath);
 
-                    if (toolingManifest?.McpServers == null || toolingManifest.McpServers.Length == 0)
-                    {
-                        logger.LogWarning("No MCP servers found in ToolingManifest.json");
-                        logger.LogInformation("You can specify scopes explicitly with --scopes option.");
-                        Environment.Exit(1);
-                        return;
-                    }
-
-                    // Collect all unique scopes from manifest
-                    var scopeSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                    foreach (var server in toolingManifest.McpServers)
-                    {
-                        if (!string.IsNullOrWhiteSpace(server.Scope))
-                        {
-                            scopeSet.Add(server.Scope);
-                        }
-                    }
-
-                    if (scopeSet.Count == 0)
+                    if (requestedScopes.Length == 0)
                     {
                         logger.LogError("No scopes found in ToolingManifest.json");
                         logger.LogInformation("You can specify scopes explicitly with --scopes option.");
@@ -157,7 +139,6 @@ internal static class GetTokenSubcommand
                         return;
                     }
 
-                    requestedScopes = scopeSet.ToArray();
                     logger.LogInformation("Collected {Count} unique scope(s) from manifest: {Scopes}", 
                         requestedScopes.Length, string.Join(", ", requestedScopes));
                 }
@@ -175,52 +156,7 @@ internal static class GetTokenSubcommand
                 logger.LogInformation("Acquiring access token with explicit scopes...");
                 
                 // Determine tenant ID (from config or detect from Azure CLI)
-                string? tenantId = null;
-                if (setupConfig != null && !string.IsNullOrWhiteSpace(setupConfig.TenantId))
-                {
-                    tenantId = setupConfig.TenantId;
-                }
-                else
-                {
-                    // When config is not available or tenant ID is missing, try to detect from Azure CLI
-                    logger.LogInformation("No tenant ID in config. Attempting to detect from Azure CLI context...");
-                    
-                    try
-                    {
-                        var executor = new CommandExecutor(
-                            Microsoft.Extensions.Logging.Abstractions.NullLogger<CommandExecutor>.Instance);
-                        
-                        var result = await executor.ExecuteAsync(
-                            "az",
-                            "account show --query tenantId -o tsv",
-                            captureOutput: true,
-                            suppressErrorLogging: true);
-
-                        if (result.Success && !string.IsNullOrWhiteSpace(result.StandardOutput))
-                        {
-                            tenantId = result.StandardOutput.Trim();
-                            logger.LogInformation("Detected tenant ID from Azure CLI: {TenantId}", tenantId);
-                        }
-                        else
-                        {
-                            logger.LogWarning("Could not detect tenant ID from Azure CLI.");
-                            logger.LogWarning("You may need to run 'az login' first.");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.LogWarning("Failed to detect tenant ID from Azure CLI: {Message}", ex.Message);
-                    }
-                    
-                    if (string.IsNullOrWhiteSpace(tenantId))
-                    {
-                        logger.LogInformation("");
-                        logger.LogInformation("For best results, either:");
-                        logger.LogInformation("  1. Run 'az login' to set Azure CLI context");
-                        logger.LogInformation("  2. Create a config file with: a365 config init");
-                        logger.LogInformation("");
-                    }
-                }
+                string? tenantId = await TenantDetectionHelper.DetectTenantIdAsync(setupConfig, logger);
                 
                 try
                 {

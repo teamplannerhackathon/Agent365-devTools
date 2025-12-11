@@ -2,7 +2,7 @@
 
 ## Overview
 
-The `a365 develop gettoken` command retrieves bearer tokens for testing MCP (Model Context Protocol) server authentication during development. This command acquires tokens with explicit scopes using interactive browser authentication.
+The `a365 develop gettoken` command retrieves bearer tokens for testing MCP servers during development. This command acquires tokens with explicit scopes using interactive browser authentication.
 
 > **Note**: For production agent deployments, authentication is handled automatically through inheritable permissions configured during `a365 setup permissions mcp`. This command is for development testing and debugging.
 

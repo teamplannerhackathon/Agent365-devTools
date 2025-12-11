@@ -4,8 +4,6 @@
 
 The `a365 develop addpermissions` command adds MCP (Model Context Protocol) server API permissions to Azure AD applications. This command is designed for **development scenarios** where you need to configure custom applications (not agent blueprints) to access MCP servers.
 
-> **Note**: For production agent blueprint configuration, use `a365 setup permissions mcp` instead, which configures inheritable permissions and OAuth2 grants for the agent blueprint.
-
 ## Usage
 
 ```bash
