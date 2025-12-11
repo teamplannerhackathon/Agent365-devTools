@@ -41,6 +41,7 @@ public static class DevelopCommand
         developCommand.AddCommand(CreateListConfiguredSubcommand(logger, configService, commandExecutor));
         developCommand.AddCommand(CreateAddMcpServersSubcommand(logger, configService, authService, commandExecutor));
         developCommand.AddCommand(CreateRemoveMcpServersSubcommand(logger, configService, commandExecutor));
+        developCommand.AddCommand(CreateStartMockToolingServerSubcommand(logger, configService, commandExecutor));
 
         return developCommand;
     }
@@ -121,10 +122,10 @@ public static class DevelopCommand
             if (!skipAuth)
             {
                 logger.LogInformation("Getting authentication token...");
-                
+
                 // Determine the audience (App ID) based on the environment
                 var audience = ConfigConstants.GetAgent365ToolsResourceAppId(config.Environment);
-                
+
                 logger.LogInformation("Environment: {Environment}, Audience: {Audience}", config.Environment, audience);
 
                 authToken = await authService.GetAccessTokenAsync(audience);
@@ -160,7 +161,7 @@ public static class DevelopCommand
             var responseContent = await response.Content.ReadAsStringAsync();
 
             logger.LogInformation("Successfully received response from discoverToolServers endpoint");
-            
+
             // Parse and display the MCP servers
             using var responseDoc = JsonDocument.Parse(responseContent);
             var responseRoot = responseDoc.RootElement;
@@ -506,10 +507,10 @@ public static class DevelopCommand
                 }
 
                 var (updatedServers, addedCount, updatedCount) = UpsertMcpServersInManifest(
-                    existingServers, 
-                    existingServerNames, 
-                    servers, 
-                    catalog, 
+                    existingServers,
+                    existingServerNames,
+                    servers,
+                    catalog,
                     logger);
 
                 if (addedCount == 0 && updatedCount == 0)
@@ -725,7 +726,7 @@ public static class DevelopCommand
         // Process existing servers first (for upsert behavior)
         foreach (var existingServer in existingServers)
         {
-            if (existingServer is Dictionary<string, object> serverDict && 
+            if (existingServer is Dictionary<string, object> serverDict &&
                 serverDict.TryGetValue("mcpServerName", out var nameObj) &&
                 nameObj is string existingServerName)
             {
@@ -810,5 +811,87 @@ public static class DevelopCommand
         }
 
         return (updatedServers, addedCount, updatedCount);
+    }
+
+    /// <summary>
+    /// Creates the start-mock-tooling-server subcommand to start the MockToolingServer for development
+    /// </summary>
+    private static Command CreateStartMockToolingServerSubcommand(ILogger logger, IConfigService configService, CommandExecutor commandExecutor)
+    {
+        var command = new Command("start-mock-tooling-server", "Start the Mock Tooling Server for local development and testing");
+
+        command.SetHandler(async () =>
+        {
+            logger.LogInformation("Starting Mock Tooling Server...");
+
+            try
+            {
+
+                // Determine the path to the MockToolingServer project
+                // Assuming the structure: src/Microsoft.Agents.A365.DevTools.Cli and src/Microsoft.Agents.A365.DevTools.MockToolingServer
+                var currentDir = Directory.GetCurrentDirectory();
+                var mockServerProjectDir = Path.Combine(currentDir, "..", "Microsoft.Agents.A365.DevTools.MockToolingServer");
+
+                // If we can't find it relative to current directory, try from the CLI project directory
+                if (!Directory.Exists(mockServerProjectDir))
+                {
+                    // Try to find the project directory relative to the executing assembly
+                    var assemblyDir = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location);
+                    if (assemblyDir != null)
+                    {
+                        mockServerProjectDir = Path.Combine(assemblyDir, "..", "..", "..", "..", "Microsoft.Agents.A365.DevTools.MockToolingServer");
+                    }
+                }
+
+                // Normalize the path
+                mockServerProjectDir = Path.GetFullPath(mockServerProjectDir);
+
+                if (!Directory.Exists(mockServerProjectDir))
+                {
+                    logger.LogError("Mock Tooling Server project directory not found at: {ProjectDir}", mockServerProjectDir);
+                    logger.LogError("Please ensure you are running this command from the correct location or the MockToolingServer project exists.");
+                    return;
+                }
+
+                var projectFile = Path.Combine(mockServerProjectDir, "Microsoft.Agents.A365.DevTools.MockToolingServer.csproj");
+                if (!File.Exists(projectFile))
+                {
+                    logger.LogError("Mock Tooling Server project file not found at: {ProjectFile}", projectFile);
+                    return;
+                }
+
+                logger.LogInformation("Found Mock Tooling Server project at: {ProjectDir}", mockServerProjectDir);
+                logger.LogInformation("Starting server with 'dotnet run'...");
+                logger.LogInformation("Press Ctrl+C to stop the server");
+
+                // Execute dotnet run with streaming output so user can see real-time logs and interact with the server
+                var result = await commandExecutor.ExecuteWithStreamingAsync(
+                    "dotnet",
+                    "run",
+                    workingDirectory: mockServerProjectDir,
+                    outputPrefix: "[MockServer] ",
+                    interactive: true
+                );
+
+                if (result.Success)
+                {
+                    logger.LogInformation("Mock Tooling Server stopped successfully");
+                }
+                else
+                {
+                    logger.LogError("Mock Tooling Server failed with exit code: {ExitCode}", result.ExitCode);
+                    if (!string.IsNullOrWhiteSpace(result.StandardError))
+                    {
+                        logger.LogError("Error details: {Error}", result.StandardError);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to start Mock Tooling Server: {Message}", ex.Message);
+            }
+        });
+
+        return command;
     }
 }
