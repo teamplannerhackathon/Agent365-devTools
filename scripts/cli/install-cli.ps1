@@ -74,7 +74,7 @@ if ($processes) {
 
 # Uninstall any existing global CLI tool (force to handle version conflicts)
 Write-Host "Uninstalling existing CLI tool..."
-$uninstallResult = dotnet tool uninstall -g Microsoft.Agents.A365.DevTools.Cli 2>&1
+dotnet tool uninstall -g Microsoft.Agents.A365.DevTools.Cli 2>&1
 if ($LASTEXITCODE -eq 0) {
     Write-Host "Existing CLI uninstalled successfully." -ForegroundColor Green
     # Give the system a moment to release file locks
@@ -97,7 +97,7 @@ Write-Host "Version: $version" -ForegroundColor Cyan
 
 # Try update first (which forces reinstall), fall back to install if not already installed
 Write-Host "Attempting to update tool..."
-$updateResult = dotnet tool update -g Microsoft.Agents.A365.DevTools.Cli --add-source $outputDir --version $version 2>&1
+dotnet tool update -g Microsoft.Agents.A365.DevTools.Cli --add-source $outputDir --version $version 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Update failed, attempting fresh install..."
     dotnet tool install -g Microsoft.Agents.A365.DevTools.Cli --add-source $outputDir --version $version

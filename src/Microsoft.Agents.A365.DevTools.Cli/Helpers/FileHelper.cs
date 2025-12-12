@@ -20,6 +20,12 @@ public static class FileHelper
     /// <returns>True if file was opened successfully or attempt was made, false if file doesn't exist</returns>
     public static bool TryOpenFileInDefaultEditor(string filePath, ILogger logger)
     {
+        if (string.IsNullOrWhiteSpace(filePath))
+        {
+            logger.LogError("Invalid file path: path is null or empty");
+            return false;
+        }
+
         if (!File.Exists(filePath))
         {
             logger.LogError("File not found: {FilePath}", filePath);
@@ -37,27 +43,55 @@ public static class FileHelper
                 if (!string.IsNullOrEmpty(editor))
                 {
                     logger.LogDebug("Using editor from environment: {Editor}", editor);
-                    Process.Start(editor, $"\"{filePath}\"");
-                    logger.LogInformation("Opened file in {Editor}", editor);
-                    return true;
+                    try
+                    {
+                        var process = Process.Start(editor, $"\"{filePath}\"");
+                        if (process == null)
+                        {
+                            logger.LogWarning("Editor '{Editor}' failed to start (process returned null). Falling back to platform default.", editor);
+                            // Fall through to platform-specific default open
+                        }
+                        else
+                        {
+                            logger.LogInformation("Opened file in {Editor}", editor);
+                            return true;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogWarning("Could not start editor '{Editor}': {Error}. Falling back to platform default.", editor, ex.Message);
+                        // Fall through to platform-specific default open
+                    }
                 }
             }
 
             // Platform-specific default open
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
+                // On Windows with UseShellExecute, Process.Start may return null even on success
+                // when the file is opened in an existing process (e.g., Notepad, VS Code)
                 Process.Start(new ProcessStartInfo(filePath) { UseShellExecute = true });
                 logger.LogInformation("Opened file in default Windows editor");
             }
             else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
             {
-                Process.Start("open", $"\"{filePath}\"");
+                var process = Process.Start("open", $"\"{filePath}\"");
+                if (process == null)
+                {
+                    logger.LogWarning("Failed to open file using macOS 'open' command (process returned null)");
+                    return false;
+                }
                 logger.LogInformation("Opened file using macOS 'open' command");
             }
             else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
             {
                 // Try xdg-open which is standard on most Linux distros
-                Process.Start("xdg-open", $"\"{filePath}\"");
+                var process = Process.Start("xdg-open", $"\"{filePath}\"");
+                if (process == null)
+                {
+                    logger.LogWarning("Failed to open file using Linux 'xdg-open' command (process returned null)");
+                    return false;
+                }
                 logger.LogInformation("Opened file using Linux 'xdg-open' command");
             }
             else

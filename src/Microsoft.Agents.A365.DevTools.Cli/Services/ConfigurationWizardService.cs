@@ -117,52 +117,50 @@ public class ConfigurationWizardService : IConfigurationWizardService
                 return null;
             }
 
-            // Step 6: Select Web App Service Plan or Messaging endpoint
-            string appServicePlan = string.Empty;
-            string appServicePlanSku = string.Empty;
-            string appServicePlanLocation = string.Empty;
-            string messagingEndpoint = string.Empty;
+        // Step 6: Select Web App Service Plan or Messaging endpoint
+        string appServicePlan = string.Empty;
+        string appServicePlanSku = string.Empty;
+        string resourceLocation = string.Empty;
+        string messagingEndpoint = string.Empty;
 
-            bool needDeployment = PromptForWebAppCreate(existingConfig, derivedNames);
-            if (needDeployment)
+        bool needDeployment = PromptForWebAppCreate(existingConfig, derivedNames);
+        if (needDeployment)
+        {
+            var (planName, isNewPlan) = await PromptForAppServicePlanAsync(existingConfig, resourceGroup);
+            appServicePlan = planName;
+            
+            if (string.IsNullOrWhiteSpace(appServicePlan))
             {
-                var (planName, isNewPlan) = await PromptForAppServicePlanAsync(existingConfig, resourceGroup);
-                appServicePlan = planName;
-                
-                if (string.IsNullOrWhiteSpace(appServicePlan))
-                {
-                    _logger.LogError("Configuration wizard cancelled: App Service Plan not selected");
-                    return null;
-                }
+                _logger.LogError("Configuration wizard cancelled: App Service Plan not selected");
+                return null;
+            }
 
-                // Only ask for location and SKU if creating a new plan
-                if (isNewPlan)
-                {
-                    appServicePlanLocation = PromptForLocation(existingConfig, resourceGroupLocation);
-                    appServicePlanSku = PromptForAppServicePlanSku(existingConfig);
-                }
-                else
-                {
-                    // Get location from existing plan
-                    var allPlans = await _azureCliService.ListAppServicePlansAsync();
-                    var selectedPlan = allPlans.FirstOrDefault(p => p.Name.Equals(appServicePlan, StringComparison.OrdinalIgnoreCase));
-                    appServicePlanLocation = selectedPlan?.Location ?? resourceGroupLocation ?? "eastus";
-                }
+            // Only ask for location and SKU if creating a new plan
+            if (isNewPlan)
+            {
+                resourceLocation = PromptForLocation(existingConfig, resourceGroupLocation);
+                appServicePlanSku = PromptForAppServicePlanSku(existingConfig);
             }
             else
             {
-                // External hosting - use resource group location for potential RG creation
-                appServicePlanLocation = resourceGroupLocation ?? existingConfig?.Location ?? "eastus";
-                
-                messagingEndpoint = PromptForMessagingEndpoint(existingConfig);
-                if (string.IsNullOrWhiteSpace(messagingEndpoint))
-                {
-                    _logger.LogError("Configuration wizard cancelled: Messaging Endpoint not provided");
-                    return null;
-                }
+                // Get location from existing plan
+                var allPlans = await _azureCliService.ListAppServicePlansAsync();
+                var selectedPlan = allPlans.FirstOrDefault(p => p.Name.Equals(appServicePlan, StringComparison.OrdinalIgnoreCase));
+                resourceLocation = selectedPlan?.Location ?? resourceGroupLocation ?? ConfigConstants.DefaultAzureLocation;
             }
-
-            // Step 7: Get manager email (required for agent creation)
+        }
+        else
+        {
+            // External hosting - use resource group location for potential RG creation
+            resourceLocation = resourceGroupLocation ?? existingConfig?.Location ?? ConfigConstants.DefaultAzureLocation;
+            
+            messagingEndpoint = PromptForMessagingEndpoint(existingConfig);
+            if (string.IsNullOrWhiteSpace(messagingEndpoint))
+            {
+                _logger.LogError("Configuration wizard cancelled: Messaging Endpoint not provided");
+                return null;
+            }
+        }            // Step 7: Get manager email (required for agent creation)
             var managerEmail = PromptForManagerEmail(existingConfig, accountInfo);
             if (string.IsNullOrWhiteSpace(managerEmail))
             {
@@ -195,7 +193,7 @@ public class ConfigurationWizardService : IConfigurationWizardService
             Console.WriteLine($"Manager Email          : {managerEmail}");
             Console.WriteLine($"Deployment Path        : {deploymentPath}");
             Console.WriteLine($"Resource Group         : {resourceGroup}");
-            Console.WriteLine($"Location               : {appServicePlanLocation}");
+            Console.WriteLine($"Location               : {resourceLocation}");
             Console.WriteLine($"Subscription           : {accountInfo.Name} ({accountInfo.Id})");
             Console.WriteLine($"Tenant                 : {accountInfo.TenantId}");
             Console.WriteLine();
@@ -221,10 +219,12 @@ public class ConfigurationWizardService : IConfigurationWizardService
                 ClientAppId = clientAppId,
                 SubscriptionId = accountInfo.Id,
                 ResourceGroup = resourceGroup,
-                Location = needDeployment ? appServicePlanLocation : (existingConfig?.Location ?? "eastus"),
+                Location = resourceLocation,
                 Environment = existingConfig?.Environment ?? "prod", // Default to prod, not asking for this
                 AppServicePlanName = appServicePlan,
-                AppServicePlanSku = string.IsNullOrWhiteSpace(appServicePlanSku) ? string.Empty : appServicePlanSku,
+                // AppServicePlanSku is only set when creating a NEW plan. For existing plans, it's left empty
+                // since the SKU cannot be changed and doesn't need to be specified during infrastructure setup
+                AppServicePlanSku = appServicePlanSku ?? string.Empty,
                 WebAppName = string.IsNullOrWhiteSpace(appServicePlan) ? string.Empty : customizedNames.WebAppName,
                 NeedDeployment = needDeployment,
                 MessagingEndpoint = messagingEndpoint,
@@ -454,8 +454,8 @@ public class ConfigurationWizardService : IConfigurationWizardService
         Console.WriteLine("Select Azure region for the new App Service Plan:");
         Console.WriteLine();
         
-        // Use RG location as default if available, otherwise use existing config or eastus
-        var defaultLocation = resourceGroupLocation ?? existingConfig?.Location ?? "eastus";
+        // Use RG location as default if available, otherwise use existing config or default location
+        var defaultLocation = resourceGroupLocation ?? existingConfig?.Location ?? ConfigConstants.DefaultAzureLocation;
         
         Console.WriteLine("Common regions:");
         Console.WriteLine("  1. eastus         - East US");

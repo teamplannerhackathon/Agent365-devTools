@@ -737,8 +737,8 @@ public static class InfrastructureSubcommand
                 }
 
                 // Check for specific error conditions and throw appropriate exception
-                if (createResult.StandardError.Contains("AuthorizationFailed", StringComparison.OrdinalIgnoreCase) ||
-                    createResult.StandardError.Contains("authorization", StringComparison.OrdinalIgnoreCase))
+                if ((createResult.StandardError?.Contains("AuthorizationFailed", StringComparison.OrdinalIgnoreCase) ?? false) ||
+                    (createResult.StandardError?.Contains("authorization", StringComparison.OrdinalIgnoreCase) ?? false))
                 {
                     throw new AzureAppServicePlanException(
                         planName,
@@ -747,8 +747,8 @@ public static class InfrastructureSubcommand
                         AppServicePlanErrorType.AuthorizationFailed,
                         createResult.StandardError);
                 }
-                else if (createResult.StandardError.Contains("QuotaExceeded", StringComparison.OrdinalIgnoreCase) ||
-                         createResult.StandardError.Contains("quota", StringComparison.OrdinalIgnoreCase))
+                else if ((createResult.StandardError?.Contains("QuotaExceeded", StringComparison.OrdinalIgnoreCase) ?? false) ||
+                         (createResult.StandardError?.Contains("quota", StringComparison.OrdinalIgnoreCase) ?? false))
                 {
                     throw new AzureAppServicePlanException(
                         planName,
@@ -757,8 +757,8 @@ public static class InfrastructureSubcommand
                         AppServicePlanErrorType.QuotaExceeded,
                         createResult.StandardError);
                 }
-                else if (createResult.StandardError.Contains("InvalidSku", StringComparison.OrdinalIgnoreCase) ||
-                         createResult.StandardError.Contains("SkuNotAvailable", StringComparison.OrdinalIgnoreCase))
+                else if ((createResult.StandardError?.Contains("InvalidSku", StringComparison.OrdinalIgnoreCase) ?? false) ||
+                         (createResult.StandardError?.Contains("SkuNotAvailable", StringComparison.OrdinalIgnoreCase) ?? false))
                 {
                     throw new AzureAppServicePlanException(
                         planName,

@@ -87,6 +87,12 @@ public static class ConfigConstants
     public const string DefaultAppServicePlanSku = "B1";
 
     /// <summary>
+    /// Default Azure location for resource deployment when not specified.
+    /// East US is chosen as a widely available region with good quota availability.
+    /// </summary>
+    public const string DefaultAzureLocation = "eastus";
+
+    /// <summary>
     /// Default Microsoft Graph API scopes for agent application
     /// </summary>
     public static readonly List<string> DefaultAgentApplicationScopes = new()

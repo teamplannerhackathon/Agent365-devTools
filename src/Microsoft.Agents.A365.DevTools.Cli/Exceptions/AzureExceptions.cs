@@ -179,16 +179,6 @@ public class AzureAppServicePlanException : Agent365Exception
         _ => "APPSERVICE_CREATION_FAILED"
     };
 
-    private static string GetIssueDescription(string planName, AppServicePlanErrorType errorType) => errorType switch
-    {
-        AppServicePlanErrorType.QuotaExceeded => $"Cannot create App Service Plan '{planName}' - Azure quota limit exceeded",
-        AppServicePlanErrorType.SkuNotAvailable => $"Cannot create App Service Plan '{planName}' - SKU not available in region",
-        AppServicePlanErrorType.AuthorizationFailed => $"Cannot create App Service Plan '{planName}' - insufficient permissions",
-        AppServicePlanErrorType.VerificationTimeout => $"App Service Plan '{planName}' creation succeeded but verification timed out",
-        _ => $"Failed to create App Service Plan '{planName}'"
-    };
-
-    // Overload that includes location and SKU for richer error messages
     private static string GetIssueDescription(string planName, string location, string sku, AppServicePlanErrorType errorType)
     {
         var locationDisplay = string.IsNullOrWhiteSpace(location) ? "(not specified)" : location;
