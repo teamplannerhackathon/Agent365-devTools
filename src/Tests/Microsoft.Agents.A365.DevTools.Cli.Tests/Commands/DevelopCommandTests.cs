@@ -18,17 +18,17 @@ public class DevelopCommandTests
     public DevelopCommandTests()
     {
         _mockLogger = Substitute.For<ILogger>();
-        
+
         // For concrete classes, we need to create partial substitutes to avoid ILogger mocking issues
         var mockConfigLogger = Substitute.For<ILogger<ConfigService>>();
         _mockConfigService = Substitute.ForPartsOf<ConfigService>(mockConfigLogger);
-        
+
         var mockExecutorLogger = Substitute.For<ILogger<CommandExecutor>>();
         _mockCommandExecutor = Substitute.ForPartsOf<CommandExecutor>(mockExecutorLogger);
-        
+
         var mockAuthLogger = Substitute.For<ILogger<AuthenticationService>>();
         _mockAuthService = Substitute.ForPartsOf<AuthenticationService>(mockAuthLogger);
-        
+
     }
 
     [Fact]
@@ -43,19 +43,20 @@ public class DevelopCommandTests
     }
 
     [Fact]
-    public void CreateCommand_HasFourSubcommands()
+    public void CreateCommand_HasFiveSubcommands()
     {
         // Act
         var command = DevelopCommand.CreateCommand(_mockLogger, _mockConfigService, _mockCommandExecutor, _mockAuthService);
 
         // Assert
-        Assert.Equal(4, command.Subcommands.Count);
-        
+        Assert.Equal(5, command.Subcommands.Count);
+
         var subcommandNames = command.Subcommands.Select(sc => sc.Name).ToList();
         Assert.Contains("list-available", subcommandNames);
         Assert.Contains("list-configured", subcommandNames);
         Assert.Contains("add-mcp-servers", subcommandNames);
         Assert.Contains("remove-mcp-servers", subcommandNames);
+        Assert.Contains("start-mock-tooling-server", subcommandNames);
     }
 
     [Fact]
@@ -96,7 +97,7 @@ public class DevelopCommandTests
         Assert.Single(subcommand.Arguments);
         Assert.Equal("servers", subcommand.Arguments[0].Name);
         Assert.Equal(2, subcommand.Options.Count);
-        
+
         var optionNames = subcommand.Options.Select(opt => opt.Name).ToList();
         Assert.Contains("config", optionNames);
         Assert.Contains("dry-run", optionNames);
@@ -113,7 +114,7 @@ public class DevelopCommandTests
         Assert.Single(subcommand.Arguments);
         Assert.Equal("servers", subcommand.Arguments[0].Name);
         Assert.Equal(2, subcommand.Options.Count);
-        
+
         var optionNames = subcommand.Options.Select(opt => opt.Name).ToList();
         Assert.Contains("config", optionNames);
         Assert.Contains("dry-run", optionNames);
