@@ -252,7 +252,7 @@ public class ConfigurationWizardService : IConfigurationWizardService
     {
         if (!await _azureCliService.IsLoggedInAsync())
         {
-            _logger.LogError("You are not logged in to Azure CLI. Please run 'az login' and select your subscription, then try again");
+            _logger.LogError(ErrorMessages.AzureCliNotAuthenticated);
             return false;
         }
 

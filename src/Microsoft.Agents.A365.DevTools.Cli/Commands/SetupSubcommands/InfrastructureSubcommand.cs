@@ -60,12 +60,7 @@ public static class InfrastructureSubcommand
         {
             errors.Add($"Invalid appServicePlanSku '{sku}'. Valid SKUs: F1 (Free), B1/B2/B3 (Basic), S1/S2/S3 (Standard), P1V2/P2V2/P3V2 (Premium V2), P1V3/P2V3/P3V3 (Premium V3)");
         }
-        else if (sku.Equals("B1", StringComparison.OrdinalIgnoreCase))
-        {
-            // Warning: B1 often has quota issues - suggest F1 for dev/test
-            var locationInfo = !string.IsNullOrWhiteSpace(config.Location) ? $" in region '{config.Location}'" : "";
-            errors.Add($"WARNING: SKU 'B1'{locationInfo} often has zero quota in Azure subscriptions by default. Consider using 'F1' (Free tier) for development/testing, or request quota increase in Azure Portal > Subscriptions > Usage + quotas");
-        }
+        // Note: B1 quota warning is now logged at execution time with actual quota check
 
         return Task.FromResult(errors);
     }

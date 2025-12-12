@@ -163,7 +163,7 @@ public class SubcommandValidationTests
     }
 
     [Fact]
-    public async Task InfrastructureSubcommand_WithB1Sku_ReturnsWarning()
+    public async Task InfrastructureSubcommand_WithB1Sku_PassesValidation()
     {
         // Arrange
         var config = new Agent365Config
@@ -180,9 +180,8 @@ public class SubcommandValidationTests
         // Act
         var errors = await InfrastructureSubcommand.ValidateAsync(config, _mockAzureValidator);
 
-        // Assert
-        errors.Should().ContainSingle()
-            .Which.Should().ContainAll("WARNING", "B1", "westus", "quota", "F1");
+        // Assert - B1 quota warning is now logged at execution time, not during validation
+        errors.Should().BeEmpty();
     }
 
     [Theory]
@@ -209,15 +208,8 @@ public class SubcommandValidationTests
         // Act
         var errors = await InfrastructureSubcommand.ValidateAsync(config, _mockAzureValidator);
 
-        // Assert - Valid SKUs pass, B1 gets a warning (not a hard error)
-        if (sku == "B1")
-        {
-            errors.Should().ContainSingle().Which.Should().Contain("WARNING");
-        }
-        else
-        {
-            errors.Should().BeEmpty();
-        }
+        // Assert - All valid SKUs pass validation (B1 quota warning is logged at execution time)
+        errors.Should().BeEmpty();
     }
 
     #endregion
