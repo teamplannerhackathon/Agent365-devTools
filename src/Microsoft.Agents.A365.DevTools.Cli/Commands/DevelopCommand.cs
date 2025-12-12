@@ -833,50 +833,55 @@ public static class DevelopCommand
 
             try
             {
-
-                // Determine the path to the MockToolingServer project
-                // Assuming the structure: src/Microsoft.Agents.A365.DevTools.Cli and src/Microsoft.Agents.A365.DevTools.MockToolingServer
-                var currentDir = Directory.GetCurrentDirectory();
-                var mockServerProjectDir = Path.Combine(currentDir, "..", "Microsoft.Agents.A365.DevTools.MockToolingServer");
-
-                // If we can't find it relative to current directory, try from the CLI project directory
-                if (!Directory.Exists(mockServerProjectDir))
+                // Find the bundled MockToolingServer executable
+                var assemblyDir = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location);
+                if (assemblyDir == null)
                 {
-                    // Try to find the project directory relative to the executing assembly
-                    var assemblyDir = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location);
-                    if (assemblyDir != null)
-                    {
-                        mockServerProjectDir = Path.Combine(assemblyDir, "..", "..", "..", "..", "Microsoft.Agents.A365.DevTools.MockToolingServer");
-                    }
-                }
-
-                // Normalize the path
-                mockServerProjectDir = Path.GetFullPath(mockServerProjectDir);
-
-                if (!Directory.Exists(mockServerProjectDir))
-                {
-                    logger.LogError("Mock Tooling Server project directory not found at: {ProjectDir}", mockServerProjectDir);
-                    logger.LogError("Please ensure you are running this command from the correct location or the MockToolingServer project exists.");
+                    logger.LogError("Unable to determine CLI assembly location");
                     return;
                 }
 
-                var projectFile = Path.Combine(mockServerProjectDir, "Microsoft.Agents.A365.DevTools.MockToolingServer.csproj");
-                if (!File.Exists(projectFile))
+                var mockServerExe = Path.Combine(assemblyDir, "Microsoft.Agents.A365.DevTools.MockToolingServer.exe");
+                var mockServerDll = Path.Combine(assemblyDir, "Microsoft.Agents.A365.DevTools.MockToolingServer.dll");
+
+                // Check for executable first, then fall back to DLL
+                string mockServerPath;
+                string command;
+                string arguments;
+
+                if (File.Exists(mockServerExe))
                 {
-                    logger.LogError("Mock Tooling Server project file not found at: {ProjectFile}", projectFile);
+                    // Use the executable directly
+                    mockServerPath = mockServerExe;
+                    command = mockServerExe;
+                    arguments = port.HasValue ? $"--urls http://localhost:{serverPort}" : "";
+                }
+                else if (File.Exists(mockServerDll))
+                {
+                    // Use dotnet to run the DLL
+                    mockServerPath = mockServerDll;
+                    command = "dotnet";
+                    arguments = port.HasValue ? $"\"{mockServerDll}\" --urls http://localhost:{serverPort}" : $"\"{mockServerDll}\"";
+                }
+                else
+                {
+                    logger.LogError("Mock Tooling Server not found in CLI package.");
+                    logger.LogError("Expected locations:");
+                    logger.LogError("  - {ExePath}", mockServerExe);
+                    logger.LogError("  - {DllPath}", mockServerDll);
+                    logger.LogError("Please ensure the Mock Tooling Server is properly packaged with the CLI.");
                     return;
                 }
 
-                logger.LogInformation("Found Mock Tooling Server project at: {ProjectDir}", mockServerProjectDir);
-                logger.LogInformation("Starting server on port {Port} with 'dotnet run'...", serverPort);
+                logger.LogInformation("Found Mock Tooling Server at: {ServerPath}", mockServerPath);
+                logger.LogInformation("Starting server on port {Port}...", serverPort);
                 logger.LogInformation("Press Ctrl+C to stop the server");
 
-                // Execute dotnet run with streaming output so user can see real-time logs and interact with the server
-                var runArgs = port.HasValue ? $"run --urls http://localhost:{serverPort}" : "run";
+                // Execute the mock server with streaming output so user can see real-time logs and interact with the server
                 var result = await commandExecutor.ExecuteWithStreamingAsync(
-                    "dotnet",
-                    runArgs,
-                    workingDirectory: mockServerProjectDir,
+                    command,
+                    arguments,
+                    workingDirectory: assemblyDir,
                     outputPrefix: "[MockServer] ",
                     interactive: true
                 );
