@@ -844,34 +844,18 @@ public static class DevelopCommand
                 var mockServerExe = Path.Combine(assemblyDir, "Microsoft.Agents.A365.DevTools.MockToolingServer.exe");
                 var mockServerDll = Path.Combine(assemblyDir, "Microsoft.Agents.A365.DevTools.MockToolingServer.dll");
 
-                // Check for executable first, then fall back to DLL
-                string mockServerPath;
-                string command;
-                string arguments;
-
-                if (File.Exists(mockServerExe))
+                // Use dotnet to run the DLL as it properly resolves dependencies in the same directory
+                if (!File.Exists(mockServerDll))
                 {
-                    // Use the executable directly
-                    mockServerPath = mockServerExe;
-                    command = mockServerExe;
-                    arguments = port.HasValue ? $"--urls http://localhost:{serverPort}" : "";
-                }
-                else if (File.Exists(mockServerDll))
-                {
-                    // Use dotnet to run the DLL
-                    mockServerPath = mockServerDll;
-                    command = "dotnet";
-                    arguments = port.HasValue ? $"\"{mockServerDll}\" --urls http://localhost:{serverPort}" : $"\"{mockServerDll}\"";
-                }
-                else
-                {
-                    logger.LogError("Mock Tooling Server not found in CLI package.");
-                    logger.LogError("Expected locations:");
-                    logger.LogError("  - {ExePath}", mockServerExe);
-                    logger.LogError("  - {DllPath}", mockServerDll);
+                    logger.LogError("Mock Tooling Server DLL not found in CLI package.");
+                    logger.LogError("Expected location: {DllPath}", mockServerDll);
                     logger.LogError("Please ensure the Mock Tooling Server is properly packaged with the CLI.");
                     return;
                 }
+
+                var mockServerPath = mockServerDll;
+                var command = "dotnet";
+                var arguments = $"\"{mockServerDll}\" --urls http://localhost:{serverPort}";
 
                 logger.LogInformation("Found Mock Tooling Server at: {ServerPath}", mockServerPath);
                 logger.LogInformation("Starting server on port {Port}...", serverPort);

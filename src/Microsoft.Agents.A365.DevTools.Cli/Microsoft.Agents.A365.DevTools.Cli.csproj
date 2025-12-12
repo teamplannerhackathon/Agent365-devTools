@@ -72,17 +72,25 @@
     </ProjectReference>
   </ItemGroup>
 
-  <!-- Target to copy MockToolingServer executable to CLI output directory -->
-  <Target Name="CopyMockToolingServer" AfterTargets="Build">
+  <!-- Target to publish and copy MockToolingServer with all dependencies -->
+  <Target Name="PublishMockToolingServer" BeforeTargets="Build">
+    <!-- Publish MockToolingServer as framework-dependent to generate proper deps.json -->
+    <Exec Command="dotnet publish &quot;..\Microsoft.Agents.A365.DevTools.MockToolingServer\Microsoft.Agents.A365.DevTools.MockToolingServer.csproj&quot; -c $(Configuration) -o &quot;$(OutputPath)mockserver&quot;"
+          WorkingDirectory="$(MSBuildProjectDirectory)" />
+  </Target>
+
+  <!-- Target to copy MockToolingServer files after publish -->
+  <Target Name="CopyMockToolingServer" AfterTargets="PublishMockToolingServer">
     <ItemGroup>
-      <MockServerFiles Include="..\Microsoft.Agents.A365.DevTools.MockToolingServer\bin\$(Configuration)\net8.0\Microsoft.Agents.A365.DevTools.MockToolingServer.*" />
-      <MockServerDeps Include="..\Microsoft.Agents.A365.DevTools.MockToolingServer\bin\$(Configuration)\net8.0\*.dll" Exclude="..\Microsoft.Agents.A365.DevTools.MockToolingServer\bin\$(Configuration)\net8.0\Microsoft.Agents.A365.DevTools.MockToolingServer.dll" />
-      <MockServerMocks Include="..\Microsoft.Agents.A365.DevTools.MockToolingServer\bin\$(Configuration)\net8.0\mocks\**\*" />
+      <!-- Copy all published files from mockserver subdirectory to main output -->
+      <MockServerPublished Include="$(OutputPath)mockserver\**\*" />
     </ItemGroup>
 
-    <Copy SourceFiles="@(MockServerFiles)" DestinationFolder="$(OutputPath)" />
-    <Copy SourceFiles="@(MockServerDeps)" DestinationFolder="$(OutputPath)" />
-    <Copy SourceFiles="@(MockServerMocks)" DestinationFolder="$(OutputPath)\mocks\%(RecursiveDir)" />
+    <Copy SourceFiles="@(MockServerPublished)"
+          DestinationFiles="@(MockServerPublished->'$(OutputPath)%(RecursiveDir)%(Filename)%(Extension)')" />
+
+    <!-- Clean up the temporary mockserver directory -->
+    <RemoveDir Directories="$(OutputPath)mockserver" />
   </Target>
 
 </Project>

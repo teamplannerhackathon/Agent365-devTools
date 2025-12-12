@@ -71,4 +71,21 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
+# Copy the MockToolingServer deps.json file to the installed CLI location
+Write-Host "Copying MockToolingServer deps.json file..."
+$sourceDepsFile = Join-Path (Split-Path $projectPath) "bin\Release\net8.0\Microsoft.Agents.A365.DevTools.MockToolingServer.deps.json"
+if (Test-Path $sourceDepsFile) {
+    # Find the installed CLI location
+    $cliToolsPath = Join-Path $env:USERPROFILE ".dotnet\tools\.store\microsoft.agents.a365.devtools.cli\$version\microsoft.agents.a365.devtools.cli\$version\tools\net8.0\any"
+    if (Test-Path $cliToolsPath) {
+        $targetDepsFile = Join-Path $cliToolsPath "Microsoft.Agents.A365.DevTools.MockToolingServer.deps.json"
+        Copy-Item $sourceDepsFile $targetDepsFile -Force
+        Write-Host "MockToolingServer deps.json copied successfully." -ForegroundColor Green
+    } else {
+        Write-Warning "Could not find CLI installation path: $cliToolsPath"
+    }
+} else {
+    Write-Warning "MockToolingServer deps.json not found at: $sourceDepsFile"
+}
+
 Write-Host "Agent 365 CLI installed successfully. Run 'a365 --help' to verify installation."
