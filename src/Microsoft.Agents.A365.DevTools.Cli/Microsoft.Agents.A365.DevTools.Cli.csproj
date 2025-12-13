@@ -73,7 +73,7 @@
   </ItemGroup>
 
   <!-- Target to publish and copy MockToolingServer with all dependencies -->
-  <Target Name="PublishMockToolingServer" BeforeTargets="Pack">
+  <Target Name="PublishMockToolingServer" BeforeTargets="Build;Pack">
     <!-- Publish MockToolingServer as framework-dependent to generate proper deps.json -->
     <Exec Command="dotnet publish &quot;..\Microsoft.Agents.A365.DevTools.MockToolingServer\Microsoft.Agents.A365.DevTools.MockToolingServer.csproj&quot; -c $(Configuration) -o &quot;$(OutputPath)mockserver&quot;"
           WorkingDirectory="$(MSBuildProjectDirectory)" />
@@ -87,7 +87,7 @@
     </ItemGroup>
 
     <Copy SourceFiles="@(MockServerPublished)"
-          DestinationFiles="@(MockServerPublished->'$(OutputPath)%(RecursiveDir)%(Filename)%(Extension)')" />
+          DestinationFiles="@(MockServerPublished->'$(OutputPath)%(Filename)%(Extension)')" />
 
     <!-- Clean up the temporary mockserver directory -->
     <RemoveDir Directories="$(OutputPath)mockserver" />
