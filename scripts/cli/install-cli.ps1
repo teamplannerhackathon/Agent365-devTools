@@ -31,8 +31,12 @@ Write-Host "Package cache cleared"
 # Force clean by removing bin/obj folders
 Write-Host "Force cleaning bin and obj folders..."
 $projectDir = Split-Path $projectPath -Parent
-Remove-Item (Join-Path $projectDir "bin") -Recurse -Force -ErrorAction SilentlyContinue
-Remove-Item (Join-Path $projectDir "obj") -Recurse -Force -ErrorAction SilentlyContinue
+$binPath = Join-Path $projectDir "bin"
+$objPath = Join-Path $projectDir "obj"
+Write-Host "  Removing: $binPath"
+Remove-Item $binPath -Recurse -Force -ErrorAction SilentlyContinue
+Write-Host "  Removing: $objPath"
+Remove-Item $objPath -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host "Folders cleaned"
 
 # Clean the project to ensure fresh build

@@ -45,7 +45,13 @@ public static class FileHelper
                     logger.LogDebug("Using editor from environment: {Editor}", editor);
                     try
                     {
-                        var process = Process.Start(editor, $"\"{filePath}\"");
+                        var startInfo = new ProcessStartInfo
+                        {
+                            FileName = editor,
+                            Arguments = $"\"{filePath}\"",
+                            UseShellExecute = false
+                        };
+                        var process = Process.Start(startInfo);
                         if (process == null)
                         {
                             logger.LogWarning("Editor '{Editor}' failed to start (process returned null). Falling back to platform default.", editor);
@@ -75,7 +81,13 @@ public static class FileHelper
             }
             else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
             {
-                var process = Process.Start("open", $"\"{filePath}\"");
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = "open",
+                    Arguments = $"\"{filePath}\"",
+                    UseShellExecute = false
+                };
+                var process = Process.Start(startInfo);
                 if (process == null)
                 {
                     logger.LogWarning("Failed to open file using macOS 'open' command (process returned null)");
@@ -86,7 +98,13 @@ public static class FileHelper
             else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
             {
                 // Try xdg-open which is standard on most Linux distros
-                var process = Process.Start("xdg-open", $"\"{filePath}\"");
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = "xdg-open",
+                    Arguments = $"\"{filePath}\"",
+                    UseShellExecute = false
+                };
+                var process = Process.Start(startInfo);
                 if (process == null)
                 {
                     logger.LogWarning("Failed to open file using Linux 'xdg-open' command (process returned null)");
