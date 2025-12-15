@@ -68,4 +68,10 @@ public static class AuthenticationConstants
         "DelegatedPermissionGrant.ReadWrite.All",
         "Directory.Read.All"
     };
+
+    /// <summary>
+    /// Environment variable name for storing bearer tokens
+    /// Used by the gettoken command to set/clear authentication tokens
+    /// </summary>
+    public const string MCPBearerTokenEnvironmentVariable = "MCP_BEARER_TOKEN";
 }
