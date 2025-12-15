@@ -201,10 +201,8 @@ internal static class GetTokenSubcommand
                         string.Join(", ", requestedScopes));
                     logger.LogInformation("");
 
-                    // Get token cache file path for display (matches AuthenticationService cache location)
-                    var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-                    var tokenCachePath = Path.Combine(appDataPath, 
-                        AuthenticationConstants.ApplicationName, 
+                    var tokenCachePath = Path.Combine(
+                        ConfigService.GetGlobalConfigDirectory(),
                         AuthenticationConstants.TokenCacheFileName);
 
                     // Create a single result representing the consolidated token
