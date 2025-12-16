@@ -26,6 +26,7 @@ internal static class StartMockToolingServerSubcommand
         CommandExecutor commandExecutor)
     {
         var command = new Command("start-mock-tooling-server", "Start the Mock Tooling Server for local development and testing");
+        command.AddAlias("start-mcp");
 
         var portOption = new Option<int?>(
             ["--port", "-p"],
