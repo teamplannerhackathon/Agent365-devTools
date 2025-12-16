@@ -768,6 +768,447 @@ public class AuthenticationServiceTests : IDisposable
 
     #endregion
 
+    #region Token Cache Format Tests
+
+    [Fact]
+    public async Task LoadCachedToken_FromMcpBearerTokenFile_SingleTokenFormat_ShouldLoadCorrectly()
+    {
+        // Arrange
+        var testCachePath = Path.Combine(Path.GetTempPath(), AuthenticationConstants.MCPBearerTokenFileName);
+        
+        try
+        {
+            // Create single token format (mcp_bearer_token.json format)
+            var singleToken = new
+            {
+                AccessToken = "test-single-token",
+                ExpiresOn = DateTime.UtcNow.AddHours(1),
+                TenantId = "test-tenant-id"
+            };
+            
+            var json = JsonSerializer.Serialize(singleToken, new JsonSerializerOptions { WriteIndented = true });
+            Directory.CreateDirectory(Path.GetDirectoryName(testCachePath)!);
+            await File.WriteAllTextAsync(testCachePath, json);
+
+            // Act
+            var authService = new AuthenticationService(_mockLogger);
+            
+            // Use reflection to call private LoadCachedTokenAsync method
+            var method = typeof(AuthenticationService).GetMethod("LoadCachedTokenAsync", 
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var task = (Task<object?>)method!.Invoke(authService, new object[] { "any-key", testCachePath })!;
+            var result = await task;
+
+            // Assert
+            result.Should().NotBeNull();
+            var tokenInfo = result!;
+            var accessToken = tokenInfo.GetType().GetProperty("AccessToken")!.GetValue(tokenInfo) as string;
+            accessToken.Should().Be("test-single-token");
+        }
+        finally
+        {
+            if (File.Exists(testCachePath))
+                File.Delete(testCachePath);
+        }
+    }
+
+    [Fact]
+    public async Task LoadCachedToken_FromAuthTokenFile_DictionaryFormat_ShouldLoadCorrectly()
+    {
+        // Arrange
+        var testCachePath = Path.Combine(Path.GetTempPath(), $"test-auth-{Guid.NewGuid()}.json");
+        
+        try
+        {
+            // Create dictionary format (auth-token.json format)
+            var dictionaryCache = new
+            {
+                Tokens = new Dictionary<string, object>
+                {
+                    ["resource-key-1"] = new
+                    {
+                        AccessToken = "test-dict-token-1",
+                        ExpiresOn = DateTime.UtcNow.AddHours(1),
+                        TenantId = "tenant-1"
+                    },
+                    ["resource-key-2"] = new
+                    {
+                        AccessToken = "test-dict-token-2",
+                        ExpiresOn = DateTime.UtcNow.AddHours(2),
+                        TenantId = "tenant-2"
+                    }
+                }
+            };
+            
+            var json = JsonSerializer.Serialize(dictionaryCache, new JsonSerializerOptions { WriteIndented = true });
+            await File.WriteAllTextAsync(testCachePath, json);
+
+            // Act
+            var authService = new AuthenticationService(_mockLogger);
+            
+            // Use reflection to call private LoadCachedTokenAsync method
+            var method = typeof(AuthenticationService).GetMethod("LoadCachedTokenAsync", 
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var task = (Task<object?>)method!.Invoke(authService, new object[] { "resource-key-1", testCachePath })!;
+            var result = await task;
+
+            // Assert
+            result.Should().NotBeNull();
+            var tokenInfo = result!;
+            var accessToken = tokenInfo.GetType().GetProperty("AccessToken")!.GetValue(tokenInfo) as string;
+            accessToken.Should().Be("test-dict-token-1");
+        }
+        finally
+        {
+            if (File.Exists(testCachePath))
+                File.Delete(testCachePath);
+        }
+    }
+
+    [Fact]
+    public async Task CacheToken_ToMcpBearerTokenFile_ShouldUseSingleTokenFormat()
+    {
+        // Arrange
+        var testCachePath = Path.Combine(Path.GetTempPath(), AuthenticationConstants.MCPBearerTokenFileName);
+        
+        try
+        {
+            var authService = new AuthenticationService(_mockLogger);
+            
+            // Create TokenInfo using reflection (it's a private class)
+            var tokenInfoType = typeof(AuthenticationService).GetNestedType("TokenInfo", 
+                System.Reflection.BindingFlags.NonPublic);
+            var tokenInfo = Activator.CreateInstance(tokenInfoType!)!;
+            tokenInfoType!.GetProperty("AccessToken")!.SetValue(tokenInfo, "cached-mcp-token");
+            tokenInfoType.GetProperty("ExpiresOn")!.SetValue(tokenInfo, DateTime.UtcNow.AddHours(1));
+            tokenInfoType.GetProperty("TenantId")!.SetValue(tokenInfo, "test-tenant");
+
+            // Use reflection to call private CacheTokenAsync method
+            var method = typeof(AuthenticationService).GetMethod("CacheTokenAsync", 
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var task = (Task)method!.Invoke(authService, new object[] { "resource-key", tokenInfo, testCachePath })!;
+            await task;
+
+            // Assert
+            File.Exists(testCachePath).Should().BeTrue();
+            var json = await File.ReadAllTextAsync(testCachePath);
+            
+            // Verify it's in single token format (not wrapped in Tokens dictionary)
+            json.Should().NotContain("\"Tokens\"");
+            json.Should().Contain("\"AccessToken\"");
+            json.Should().Contain("cached-mcp-token");
+        }
+        finally
+        {
+            if (File.Exists(testCachePath))
+                File.Delete(testCachePath);
+        }
+    }
+
+    [Fact]
+    public async Task CacheToken_ToAuthTokenFile_ShouldUseDictionaryFormat()
+    {
+        // Arrange
+        var testCachePath = Path.Combine(Path.GetTempPath(), $"test-auth-{Guid.NewGuid()}.json");
+        
+        try
+        {
+            var authService = new AuthenticationService(_mockLogger);
+            
+            // Create TokenInfo using reflection
+            var tokenInfoType = typeof(AuthenticationService).GetNestedType("TokenInfo", 
+                System.Reflection.BindingFlags.NonPublic);
+            var tokenInfo = Activator.CreateInstance(tokenInfoType!)!;
+            tokenInfoType!.GetProperty("AccessToken")!.SetValue(tokenInfo, "cached-auth-token");
+            tokenInfoType.GetProperty("ExpiresOn")!.SetValue(tokenInfo, DateTime.UtcNow.AddHours(1));
+            tokenInfoType.GetProperty("TenantId")!.SetValue(tokenInfo, "test-tenant");
+
+            // Use reflection to call private CacheTokenAsync method
+            var method = typeof(AuthenticationService).GetMethod("CacheTokenAsync", 
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var task = (Task)method!.Invoke(authService, new object[] { "resource-key", tokenInfo, testCachePath })!;
+            await task;
+
+            // Assert
+            File.Exists(testCachePath).Should().BeTrue();
+            var json = await File.ReadAllTextAsync(testCachePath);
+            
+            // Verify it's in dictionary format (wrapped in Tokens dictionary)
+            json.Should().Contain("\"Tokens\"");
+            json.Should().Contain("\"resource-key\"");
+            json.Should().Contain("cached-auth-token");
+        }
+        finally
+        {
+            if (File.Exists(testCachePath))
+                File.Delete(testCachePath);
+        }
+    }
+
+    [Fact]
+    public async Task SwitchBetweenFormats_McpToAuth_ShouldHandleGracefully()
+    {
+        // Arrange - Start with MCP bearer token format
+        var mcpCachePath = Path.Combine(Path.GetTempPath(), AuthenticationConstants.MCPBearerTokenFileName);
+        var authCachePath = Path.Combine(Path.GetTempPath(), $"test-auth-{Guid.NewGuid()}.json");
+        
+        try
+        {
+            // Create MCP format file first
+            var mcpToken = new
+            {
+                AccessToken = "mcp-format-token",
+                ExpiresOn = DateTime.UtcNow.AddHours(1),
+                TenantId = "tenant-mcp"
+            };
+            await File.WriteAllTextAsync(mcpCachePath, JsonSerializer.Serialize(mcpToken, new JsonSerializerOptions { WriteIndented = true }));
+
+            var authService = new AuthenticationService(_mockLogger);
+            
+            // Act 1: Load from MCP format
+            var loadMethod = typeof(AuthenticationService).GetMethod("LoadCachedTokenAsync", 
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var loadTask1 = (Task<object?>)loadMethod!.Invoke(authService, new object[] { "any-key", mcpCachePath })!;
+            var mcpResult = await loadTask1;
+
+            // Assert 1: MCP format loaded correctly
+            mcpResult.Should().NotBeNull();
+            var mcpAccessToken = mcpResult!.GetType().GetProperty("AccessToken")!.GetValue(mcpResult) as string;
+            mcpAccessToken.Should().Be("mcp-format-token");
+
+            // Act 2: Cache same token to auth format
+            var tokenInfoType = typeof(AuthenticationService).GetNestedType("TokenInfo", 
+                System.Reflection.BindingFlags.NonPublic);
+            var tokenInfo = Activator.CreateInstance(tokenInfoType!)!;
+            tokenInfoType!.GetProperty("AccessToken")!.SetValue(tokenInfo, "mcp-format-token");
+            tokenInfoType.GetProperty("ExpiresOn")!.SetValue(tokenInfo, DateTime.UtcNow.AddHours(1));
+            tokenInfoType.GetProperty("TenantId")!.SetValue(tokenInfo, "tenant-mcp");
+
+            var cacheMethod = typeof(AuthenticationService).GetMethod("CacheTokenAsync", 
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var cacheTask = (Task)cacheMethod!.Invoke(authService, new object[] { "resource-key", tokenInfo, authCachePath })!;
+            await cacheTask;
+
+            // Act 3: Load from auth format
+            var loadTask2 = (Task<object?>)loadMethod!.Invoke(authService, new object[] { "resource-key", authCachePath })!;
+            var authResult = await loadTask2;
+
+            // Assert 2: Auth format loaded correctly
+            authResult.Should().NotBeNull();
+            var authAccessToken = authResult!.GetType().GetProperty("AccessToken")!.GetValue(authResult) as string;
+            authAccessToken.Should().Be("mcp-format-token");
+        }
+        finally
+        {
+            if (File.Exists(mcpCachePath))
+                File.Delete(mcpCachePath);
+            if (File.Exists(authCachePath))
+                File.Delete(authCachePath);
+        }
+    }
+
+    [Fact]
+    public async Task SwitchBetweenFormats_AuthToMcp_ShouldHandleGracefully()
+    {
+        // Arrange - Start with auth token dictionary format
+        var authCachePath = Path.Combine(Path.GetTempPath(), $"test-auth-{Guid.NewGuid()}.json");
+        var mcpCachePath = Path.Combine(Path.GetTempPath(), AuthenticationConstants.MCPBearerTokenFileName);
+        
+        try
+        {
+            // Create auth dictionary format file first
+            var authCache = new
+            {
+                Tokens = new Dictionary<string, object>
+                {
+                    ["resource-key"] = new
+                    {
+                        AccessToken = "auth-format-token",
+                        ExpiresOn = DateTime.UtcNow.AddHours(1),
+                        TenantId = "tenant-auth"
+                    }
+                }
+            };
+            await File.WriteAllTextAsync(authCachePath, JsonSerializer.Serialize(authCache, new JsonSerializerOptions { WriteIndented = true }));
+
+            var authService = new AuthenticationService(_mockLogger);
+            
+            // Act 1: Load from auth dictionary format
+            var loadMethod = typeof(AuthenticationService).GetMethod("LoadCachedTokenAsync", 
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var loadTask1 = (Task<object?>)loadMethod!.Invoke(authService, new object[] { "resource-key", authCachePath })!;
+            var authResult = await loadTask1;
+
+            // Assert 1: Auth format loaded correctly
+            authResult.Should().NotBeNull();
+            var authAccessToken = authResult!.GetType().GetProperty("AccessToken")!.GetValue(authResult) as string;
+            authAccessToken.Should().Be("auth-format-token");
+
+            // Act 2: Cache same token to MCP format
+            var tokenInfoType = typeof(AuthenticationService).GetNestedType("TokenInfo", 
+                System.Reflection.BindingFlags.NonPublic);
+            var tokenInfo = Activator.CreateInstance(tokenInfoType!)!;
+            tokenInfoType!.GetProperty("AccessToken")!.SetValue(tokenInfo, "auth-format-token");
+            tokenInfoType.GetProperty("ExpiresOn")!.SetValue(tokenInfo, DateTime.UtcNow.AddHours(1));
+            tokenInfoType.GetProperty("TenantId")!.SetValue(tokenInfo, "tenant-auth");
+
+            var cacheMethod = typeof(AuthenticationService).GetMethod("CacheTokenAsync", 
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var cacheTask = (Task)cacheMethod!.Invoke(authService, new object[] { "resource-key", tokenInfo, mcpCachePath })!;
+            await cacheTask;
+
+            // Act 3: Load from MCP format
+            var loadTask2 = (Task<object?>)loadMethod!.Invoke(authService, new object[] { "any-key", mcpCachePath })!;
+            var mcpResult = await loadTask2;
+
+            // Assert 2: MCP format loaded correctly (ignores resource key)
+            mcpResult.Should().NotBeNull();
+            var mcpAccessToken = mcpResult!.GetType().GetProperty("AccessToken")!.GetValue(mcpResult) as string;
+            mcpAccessToken.Should().Be("auth-format-token");
+        }
+        finally
+        {
+            if (File.Exists(authCachePath))
+                File.Delete(authCachePath);
+            if (File.Exists(mcpCachePath))
+                File.Delete(mcpCachePath);
+        }
+    }
+
+    [Fact]
+    public async Task LoadCachedToken_FromMcpFile_IgnoresResourceKey()
+    {
+        // Arrange
+        var testCachePath = Path.Combine(Path.GetTempPath(), AuthenticationConstants.MCPBearerTokenFileName);
+        
+        try
+        {
+            var singleToken = new
+            {
+                AccessToken = "test-token-no-key",
+                ExpiresOn = DateTime.UtcNow.AddHours(1),
+                TenantId = "test-tenant"
+            };
+            
+            await File.WriteAllTextAsync(testCachePath, JsonSerializer.Serialize(singleToken, new JsonSerializerOptions { WriteIndented = true }));
+            var authService = new AuthenticationService(_mockLogger);
+            
+            // Act: Try with different resource keys - should return same token
+            var method = typeof(AuthenticationService).GetMethod("LoadCachedTokenAsync", 
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            
+            var task1 = (Task<object?>)method!.Invoke(authService, new object[] { "key-1", testCachePath })!;
+            var result1 = await task1;
+            
+            var task2 = (Task<object?>)method!.Invoke(authService, new object[] { "key-2", testCachePath })!;
+            var result2 = await task2;
+
+            // Assert: Both should return the same token regardless of key
+            result1.Should().NotBeNull();
+            result2.Should().NotBeNull();
+            
+            var token1 = result1!.GetType().GetProperty("AccessToken")!.GetValue(result1) as string;
+            var token2 = result2!.GetType().GetProperty("AccessToken")!.GetValue(result2) as string;
+            
+            token1.Should().Be("test-token-no-key");
+            token2.Should().Be("test-token-no-key");
+        }
+        finally
+        {
+            if (File.Exists(testCachePath))
+                File.Delete(testCachePath);
+        }
+    }
+
+    [Fact]
+    public async Task CacheToken_ToMcpFile_MultipleTimes_ShouldOverwrite()
+    {
+        // Arrange
+        var testCachePath = Path.Combine(Path.GetTempPath(), AuthenticationConstants.MCPBearerTokenFileName);
+        
+        try
+        {
+            var authService = new AuthenticationService(_mockLogger);
+            var tokenInfoType = typeof(AuthenticationService).GetNestedType("TokenInfo", 
+                System.Reflection.BindingFlags.NonPublic);
+            var cacheMethod = typeof(AuthenticationService).GetMethod("CacheTokenAsync", 
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+
+            // Act: Cache first token
+            var token1 = Activator.CreateInstance(tokenInfoType!)!;
+            tokenInfoType!.GetProperty("AccessToken")!.SetValue(token1, "first-token");
+            tokenInfoType.GetProperty("ExpiresOn")!.SetValue(token1, DateTime.UtcNow.AddHours(1));
+            tokenInfoType.GetProperty("TenantId")!.SetValue(token1, "tenant-1");
+            
+            await (Task)cacheMethod!.Invoke(authService, new object[] { "key-1", token1, testCachePath })!;
+
+            // Act: Cache second token (should overwrite)
+            var token2 = Activator.CreateInstance(tokenInfoType!)!;
+            tokenInfoType!.GetProperty("AccessToken")!.SetValue(token2, "second-token");
+            tokenInfoType.GetProperty("ExpiresOn")!.SetValue(token2, DateTime.UtcNow.AddHours(2));
+            tokenInfoType.GetProperty("TenantId")!.SetValue(token2, "tenant-2");
+            
+            await (Task)cacheMethod!.Invoke(authService, new object[] { "key-2", token2, testCachePath })!;
+
+            // Assert: File should contain only the second token
+            var json = await File.ReadAllTextAsync(testCachePath);
+            json.Should().Contain("second-token");
+            json.Should().NotContain("first-token");
+            json.Should().NotContain("\"Tokens\""); // Should not have dictionary wrapper
+        }
+        finally
+        {
+            if (File.Exists(testCachePath))
+                File.Delete(testCachePath);
+        }
+    }
+
+    [Fact]
+    public async Task LoadCachedToken_FromNonExistentFile_ShouldReturnNull()
+    {
+        // Arrange
+        var nonExistentPath = Path.Combine(Path.GetTempPath(), $"non-existent-{Guid.NewGuid()}.json");
+        var authService = new AuthenticationService(_mockLogger);
+        
+        // Act
+        var method = typeof(AuthenticationService).GetMethod("LoadCachedTokenAsync", 
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        var task = (Task<object?>)method!.Invoke(authService, new object[] { "any-key", nonExistentPath })!;
+        var result = await task;
+
+        // Assert
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task LoadCachedToken_FromMalformedJson_ShouldReturnNull()
+    {
+        // Arrange
+        var testCachePath = Path.Combine(Path.GetTempPath(), $"malformed-{Guid.NewGuid()}.json");
+        
+        try
+        {
+            await File.WriteAllTextAsync(testCachePath, "{ invalid json syntax }");
+            var authService = new AuthenticationService(_mockLogger);
+            
+            // Act
+            var method = typeof(AuthenticationService).GetMethod("LoadCachedTokenAsync", 
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var task = (Task<object?>)method!.Invoke(authService, new object[] { "any-key", testCachePath })!;
+            var result = await task;
+
+            // Assert
+            result.Should().BeNull();
+        }
+        finally
+        {
+            if (File.Exists(testCachePath))
+                File.Delete(testCachePath);
+        }
+    }
+
+    #endregion
+
     // Note: Testing GetAccessTokenAsync requires interactive browser authentication
     // which is not suitable for automated unit tests. This should be tested with integration tests
     // or manual testing.

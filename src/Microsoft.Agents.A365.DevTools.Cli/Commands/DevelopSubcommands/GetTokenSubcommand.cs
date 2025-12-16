@@ -83,7 +83,6 @@ internal static class GetTokenSubcommand
 
             try
             {
-
                 logger.LogInformation("Retrieving bearer token for MCP servers...");
                 logger.LogInformation("");
 

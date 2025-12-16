@@ -70,14 +70,10 @@ public static class AuthenticationConstants
     };
 
     /// <summary>
-    /// Environment variable name for storing bearer tokens
-    /// Used by the gettoken command to set/clear authentication tokens
-    /// </summary>
-    public const string MCPBearerTokenEnvironmentVariable = "MCP_BEARER_TOKEN";
-
-    /// <summary>
-    /// MCP bearer token cache file name (simple JSON format with token and expiry)
-    /// Stored in the same directory as auth-token.json for easy access by other applications
+    /// MCP bearer token cache file name (simple JSON format with token and expiry).
+    /// Tokens acquired via "a365 develop gettoken" are stored in this file for reuse.
+    /// Stored in the same directory as auth-token.json (%LocalAppData%\Microsoft.Agents.A365.DevTools.Cli\)
+    /// for easy access by MCP client applications.
     /// </summary>
     public const string MCPBearerTokenFileName = "mcp_bearer_token.json";
 }
