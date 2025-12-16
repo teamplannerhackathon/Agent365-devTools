@@ -238,12 +238,6 @@ internal static class GetTokenSubcommand
                     DisplayResults(tokenResults, outputFormat, verbose, logger);
 
                     logger.LogInformation("");
-                    logger.LogInformation("For use in other applications:");
-                    logger.LogInformation("  - MCP Bearer Token File: {Path}", mcpTokenCachePath);
-                    logger.LogInformation("  - Read the 'Token' field from the JSON file");
-                    logger.LogInformation("  - Check 'ExpiresOn' to determine if token is still valid");
-
-                    logger.LogInformation("");
                     logger.LogInformation("Token acquired successfully!");
                 }
                 catch (Exception ex)
@@ -303,9 +297,14 @@ internal static class GetTokenSubcommand
                 logger.LogInformation("  Status: [SUCCESS]");
                 logger.LogInformation("  Expires: ~{Expiry}", result.ExpiresOn?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "Unknown");
 
-                if (!string.IsNullOrWhiteSpace(result.Token))
+                if (verbose && !string.IsNullOrWhiteSpace(result.Token))
                 {
                     logger.LogInformation("  Token: {Token}", result.Token);
+                }
+                else if (!string.IsNullOrWhiteSpace(result.Token))
+                {
+                    var preview = result.Token.Length > 20 ? result.Token[..20] : result.Token;
+                    logger.LogInformation("  Token: {Preview}... (use --verbose to see full token)", preview);
                 }
 
                 if (!string.IsNullOrWhiteSpace(result.CacheFilePath))
@@ -332,7 +331,7 @@ internal static class GetTokenSubcommand
             scope = r.Scope,
             audience = r.Audience,
             success = r.Success,
-            token = r.Token,
+            token = verbose ? r.Token : (r.Token?.Length > 20 ? r.Token[..20] + "..." : r.Token),
             expiresOn = r.ExpiresOn?.ToString("o"),
             error = r.Error,
             cacheFilePath = r.CacheFilePath
