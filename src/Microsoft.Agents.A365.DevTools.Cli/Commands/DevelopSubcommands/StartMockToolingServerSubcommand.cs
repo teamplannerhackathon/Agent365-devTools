@@ -260,9 +260,10 @@ internal static class StartMockToolingServerSubcommand
                     break;
                 }
             }
-            catch
+            catch (Exception ex)
             {
                 // Continue to next terminal
+                logger.LogDebug(ex, $"Failed check for terminal '{terminal}'. Continuing to next terminal.");
             }
         }
 
