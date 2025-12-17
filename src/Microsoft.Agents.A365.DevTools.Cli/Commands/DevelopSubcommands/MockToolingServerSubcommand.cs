@@ -213,7 +213,7 @@ internal static class MockToolingServerSubcommand
     /// <summary>
     /// Starts the Mock Tooling Server in a new terminal window
     /// </summary>
-    /// <param name="command">The command to execute (dotnet)</param>
+    /// <param name="command">The executable command to execute</param>
     /// <param name="arguments">The arguments for the command</param>
     /// <param name="workingDirectory">Working directory for the process</param>
     /// <param name="logger">Logger for output</param>
