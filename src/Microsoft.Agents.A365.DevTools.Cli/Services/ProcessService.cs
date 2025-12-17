@@ -173,7 +173,7 @@ public class ProcessService : IProcessService
         {
             processStartInfo.ArgumentList.Add("--title=Mock Tooling Server");
             processStartInfo.ArgumentList.Add("--");
-            processStartInfo.ArgumentList.Add($"{command} {arguments}");
+            processStartInfo.ArgumentList.Add(command);
         }
         else
         {
