@@ -875,11 +875,9 @@ public class ConfigurationWizardService : IConfigurationWizardService
                 }
                 if (ex.MitigationSteps.Count > 0)
                 {
-                    Console.WriteLine();
-                    Console.WriteLine(ErrorMessages.ClientAppValidationFixHeader);
                     foreach (var step in ex.MitigationSteps)
                     {
-                        Console.WriteLine($"  - {step}");
+                        Console.WriteLine(step);
                     }
                 }
                 Console.WriteLine();

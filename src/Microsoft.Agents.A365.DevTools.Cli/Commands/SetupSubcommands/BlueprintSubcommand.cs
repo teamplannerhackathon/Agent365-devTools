@@ -77,10 +77,14 @@ internal static class BlueprintSubcommand
             // Add mitigation steps if available
             if (ex.MitigationSteps.Count > 0)
             {
-                errors.Add("");
-                errors.Add(ErrorMessages.ClientAppValidationFixHeader);
-                errors.AddRange(ex.MitigationSteps.Select(m => $"  - {m}"));
+                errors.AddRange(ex.MitigationSteps);
             }
+        }
+        catch (Exception ex)
+        {
+            // Catch any unexpected validation errors (Graph API failures, etc.)
+            errors.Add($"Client app validation failed: {ex.Message}");
+            errors.Add("Ensure Azure CLI is authenticated and you have access to the tenant.");
         }
 
         return errors;

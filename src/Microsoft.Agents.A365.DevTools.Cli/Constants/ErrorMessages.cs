@@ -20,13 +20,10 @@ public static class ErrorMessages
         
         return new List<string>
         {
-            "Your Azure subscription has reached its quota limit for App Service Plans in this SKU tier",
-            "Option 1: Request a quota increase in Azure Portal > Subscriptions > Usage + quotas",
-            "Option 2: Use a Free tier (F1) for development/testing by updating 'planSku' to 'F1' in a365.config.json",
-            "Option 3: Use a different Azure subscription with available quota",
-            "Option 4: Delete unused App Service Plans to free up quota",
-            $"Option 5: Try a different region - update 'location' in a365.config.json (current: {locationDisplay})",
-            "Learn more: https://learn.microsoft.com/azure/app-service/app-service-plan-manage#quotas"
+            "Your Azure subscription has reached its quota limit for App Service Plans in this SKU tier.",
+            "For development/testing, update 'planSku' to 'F1' in a365.config.json to use Free tier.",
+            "For production, request quota increase at: Azure Portal > Subscriptions > Usage + quotas",
+            $"Current location: {locationDisplay}. Consider trying a different region if quota is unavailable."
         };
     }
 
@@ -40,11 +37,9 @@ public static class ErrorMessages
         
         return new List<string>
         {
-            $"The SKU '{skuDisplay}' is not available in region '{locationDisplay}'",
-            "Option 1: Change the 'planSku' in a365.config.json to a supported SKU (F1, B1, B2, S1, S2, P1V2, P2V2)",
-            $"Option 2: Change the 'location' in a365.config.json to a region that supports '{skuDisplay}'",
-            "Option 3: Use Free tier (F1) for development/testing",
-            "Check SKU availability: https://azure.microsoft.com/pricing/details/app-service/"
+            $"SKU '{skuDisplay}' is not available in region '{locationDisplay}'.",
+            "Update 'planSku' in a365.config.json to a supported SKU: F1, B1, B2, S1, S2, P1V2, P2V2",
+            $"Or change 'location' in a365.config.json to a region that supports '{skuDisplay}'."
         };
     }
 
@@ -55,11 +50,9 @@ public static class ErrorMessages
     {
         return new List<string>
         {
-            "You don't have sufficient permissions to create App Service Plans in this subscription or resource group",
-            "Required role: Contributor or Owner on the subscription or resource group",
-            "Check your current role: Run 'az role assignment list --assignee $(az account show --query user.name -o tsv) --all'",
-            "Contact your Azure administrator to grant the required permissions",
-            "Verify you're using the correct subscription: 'az account show'"
+            "Insufficient permissions to create App Service Plans in this subscription or resource group.",
+            "Required role: Contributor or Owner on the subscription or resource group.",
+            "Contact your Azure administrator to grant the required permissions."
         };
     }
 
@@ -70,12 +63,10 @@ public static class ErrorMessages
     {
         return new List<string>
         {
-            "The App Service Plan was created but is taking longer than expected to appear in Azure",
-            "This usually indicates an Azure propagation delay or regional issue",
-            "Option 1: Wait a few minutes and check Azure Portal to confirm the plan exists",
-            "Option 2: If the plan exists in Portal, run the setup command again (it will skip creation)",
-            "Option 3: If the plan doesn't exist after 5+ minutes, delete the resource group and retry",
-            "Check Azure status: https://status.azure.com"
+            "App Service Plan creation is taking longer than expected.",
+            "Wait a few minutes and check Azure Portal to confirm the plan exists.",
+            "If the plan exists, run the command again (it will skip creation).",
+            "If issues persist, check Azure service status at https://status.azure.com"
         };
     }
 
@@ -86,12 +77,10 @@ public static class ErrorMessages
     {
         return new List<string>
         {
-            "App Service Plan creation failed due to an unexpected Azure error",
-            "Option 1: Check the error details above for specific Azure error messages",
-            "Option 2: Verify your Azure subscription is active and has no billing issues",
-            "Option 3: Try a different region by updating 'location' in a365.config.json",
-            "Option 4: Check Azure service health: https://status.azure.com",
-            "Learn more: https://learn.microsoft.com/azure/app-service/app-service-plan-manage"
+            "App Service Plan creation failed.",
+            "Verify your Azure subscription is active and has no billing issues.",
+            "Try a different region by updating 'location' in a365.config.json.",
+            "Check Azure service status at https://status.azure.com"
         };
     }
 
@@ -148,20 +137,9 @@ public static class ErrorMessages
     {
         return new List<string>
         {
-            $"Failed to create service principal for application {appId}",
-            "",
-            "You need one of these roles to create service principals:",
-            "  - Application Administrator (recommended)",
-            "  - Cloud Application Administrator",
-            "  - Global Administrator",
-            "",
-            "To check your current roles:",
-            "  az rest --method GET --url https://graph.microsoft.com/v1.0/me/memberOf",
-            "",
-            "Contact your tenant administrator if you don't have these roles.",
-            "",
-            "Alternatively, ask your admin to run this Azure CLI command:",
-            $"  az ad sp create --id {appId}"
+            $"Insufficient privileges to create service principal for {appId}.",
+            "Required role: Application Administrator, Cloud Application Administrator, or Global Administrator.",
+            $"Ask your tenant administrator to run: az ad sp create --id {appId}"
         };
     }
 
@@ -172,18 +150,10 @@ public static class ErrorMessages
     {
         return new List<string>
         {
-            "Failed to create service principal for Microsoft first-party client app",
-            "This app is required for MOS token acquisition",
-            "",
-            "You need one of these roles:",
-            "  - Application Administrator (recommended)",
-            "  - Cloud Application Administrator",
-            "  - Global Administrator",
-            "",
-            "Ask your tenant administrator to run:",
-            $"  az ad sp create --id {MosConstants.TpsAppServicesClientAppId}",
-            "",
-            "Or grant you one of the required roles above."
+            "Insufficient privileges to create service principal for Microsoft first-party client app.",
+            "This app is required for MOS token acquisition.",
+            "Required role: Application Administrator, Cloud Application Administrator, or Global Administrator.",
+            $"Ask your tenant administrator to run: az ad sp create --id {MosConstants.TpsAppServicesClientAppId}"
         };
     }
 
@@ -194,20 +164,12 @@ public static class ErrorMessages
     {
         return new List<string>
         {
-            "Failed to create service principals for MOS resource applications",
-            "These service principals are required for MOS API access",
-            "",
-            "You need one of these roles:",
-            "  - Application Administrator (recommended)",
-            "  - Cloud Application Administrator",
-            "  - Global Administrator",
-            "",
-            "Ask your tenant administrator to run these commands:",
+            "Insufficient privileges to create service principals for MOS resource applications.",
+            "Required role: Application Administrator, Cloud Application Administrator, or Global Administrator.",
+            "Ask your tenant administrator to run:",
             "  az ad sp create --id 6ec511af-06dc-4fe2-b493-63a37bc397b1",
             "  az ad sp create --id 8578e004-a5c6-46e7-913e-12f58912df43",
-            "  az ad sp create --id e8be65d6-d430-4289-a665-51bf2a194bda",
-            "",
-            "Or grant you one of the required roles above."
+            "  az ad sp create --id e8be65d6-d430-4289-a665-51bf2a194bda"
         };
     }
 
@@ -218,11 +180,9 @@ public static class ErrorMessages
     {
         return new List<string>
         {
-            "Grant admin consent in Azure Portal:",
-            $"  1. Go to: https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationMenuBlade/~/CallAnAPI/appId/{clientAppId}",
-            "  2. Click 'Grant admin consent for [Your Organization]'",
-            "  3. Wait 1-2 minutes for consent to propagate",
-            "Alternatively, authenticate interactively when running 'a365 publish' and consent when prompted."
+            "Admin consent required for MOS API permissions.",
+            $"Grant consent at: https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationMenuBlade/~/CallAnAPI/appId/{clientAppId}",
+            "Click 'Grant admin consent for [Your Organization]' and wait 1-2 minutes for propagation."
         };
     }
 

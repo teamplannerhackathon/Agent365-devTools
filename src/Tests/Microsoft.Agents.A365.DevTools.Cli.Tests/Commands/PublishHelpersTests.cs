@@ -89,14 +89,30 @@ public class PublishHelpersTests
     [Fact]
     public async Task EnsureMosPrerequisitesAsync_WhenPermissionsAlreadyExist_ReturnsTrue()
     {
-        // Arrange
-        var appWithMosPermissions = JsonDocument.Parse(@"{
-            ""value"": [{
+        // Arrange - app with ALL MOS permissions correctly configured
+        var appWithMosPermissions = JsonDocument.Parse($@"{{
+            ""value"": [{{
                 ""id"": ""app-object-id"",
-                ""requiredResourceAccess"": [{
-                    ""resourceAppId"": ""6ec511af-06dc-4fe2-b493-63a37bc397b1"",
-                    ""resourceAccess"": []
-                }]
+                ""requiredResourceAccess"": [
+                    {{
+                        ""resourceAppId"": ""{MosConstants.TpsAppServicesResourceAppId}"",
+                        ""resourceAccess"": [{{ ""id"": ""{MosConstants.ResourcePermissions.TpsAppServices.ScopeId}"", ""type"": ""Scope"" }}]
+                    }},
+                    {{
+                        ""resourceAppId"": ""{MosConstants.PowerPlatformApiResourceAppId}"",
+                        ""resourceAccess"": [{{ ""id"": ""{MosConstants.ResourcePermissions.PowerPlatformApi.ScopeId}"", ""type"": ""Scope"" }}]
+                    }},
+                    {{
+                        ""resourceAppId"": ""{MosConstants.MosTitlesApiResourceAppId}"",
+                        ""resourceAccess"": [{{ ""id"": ""{MosConstants.ResourcePermissions.MosTitlesApi.ScopeId}"", ""type"": ""Scope"" }}]
+                    }}
+                ]
+            }}]
+        }}");
+        
+        var consentGrantDoc = JsonDocument.Parse(@"{
+            ""value"": [{
+                ""scope"": ""AuthConfig.Read""
             }]
         }");
         
@@ -107,28 +123,19 @@ public class PublishHelpersTests
             It.IsAny<IEnumerable<string>?>()))
             .ReturnsAsync(appWithMosPermissions);
 
-        _mockGraphService.Setup(x => x.CheckServicePrincipalCreationPrivilegesAsync(
-            It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((true, new List<string> { "Application Administrator" }));
+        _mockGraphService.Setup(x => x.GraphGetAsync(
+            It.IsAny<string>(), 
+            It.Is<string>(s => s.Contains("oauth2PermissionGrants")), 
+            It.IsAny<CancellationToken>(),
+            It.IsAny<IEnumerable<string>?>()))
+            .ReturnsAsync(consentGrantDoc);
 
-        _mockGraphService.Setup(x => x.EnsureServicePrincipalForAppIdAsync(
+        _mockGraphService.Setup(x => x.LookupServicePrincipalByAppIdAsync(
             It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync("sp-object-id");
 
         _mockGraphService.Setup(x => x.GraphPatchAsync(
-            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<object>(), default, null))
-            .ReturnsAsync(true);
-
-        _mockGraphService.Setup(x => x.LookupServicePrincipalByAppIdAsync(
-            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("client-sp-object-id");
-
-        _mockGraphService.Setup(x => x.ReplaceOauth2PermissionGrantAsync(
-            It.IsAny<string>(), 
-            It.IsAny<string>(), 
-            It.IsAny<string>(), 
-            It.IsAny<IEnumerable<string>>(), 
-            default))
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<object>(), It.IsAny<CancellationToken>(), It.IsAny<IEnumerable<string>?>()))
             .ReturnsAsync(true);
 
         // Act
@@ -138,22 +145,29 @@ public class PublishHelpersTests
         // Assert
         result.Should().BeTrue();
         
-        // Service principals are always created for MOS resource apps (4 apps total)
+        // When all prerequisites exist, EnsureServicePrincipalForAppIdAsync should NOT be called
         _mockGraphService.Verify(x => x.EnsureServicePrincipalForAppIdAsync(
             It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), 
-            Times.Exactly(1 + MosConstants.AllResourceAppIds.Length));
+            Times.Never());
+        
+        // Should verify all service principals exist via lookup
+        _mockGraphService.Verify(x => x.LookupServicePrincipalByAppIdAsync(
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), 
+            Times.AtLeast(1 + MosConstants.AllResourceAppIds.Length));
     }
 
     [Fact]
     public async Task EnsureMosPrerequisitesAsync_WhenPermissionsMissing_CreatesServicePrincipals()
     {
-        // Arrange
+        // Arrange - app with NO MOS permissions
         var appWithoutMosPermissions = JsonDocument.Parse(@"{
             ""value"": [{
                 ""id"": ""app-object-id"",
                 ""requiredResourceAccess"": []
             }]
         }");
+        
+        var emptyConsentDoc = JsonDocument.Parse(@"{ ""value"": [] }");
         
         _mockGraphService.Setup(x => x.GraphGetAsync(
             It.IsAny<string>(), 
@@ -162,21 +176,39 @@ public class PublishHelpersTests
             It.IsAny<IEnumerable<string>?>()))
             .ReturnsAsync(appWithoutMosPermissions);
 
-        _mockGraphService.Setup(x => x.CheckServicePrincipalCreationPrivilegesAsync(
-            It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((true, new List<string> { "Application Administrator" }));
+        _mockGraphService.Setup(x => x.GraphGetAsync(
+            It.IsAny<string>(), 
+            It.Is<string>(s => s.Contains("oauth2PermissionGrants")), 
+            It.IsAny<CancellationToken>(),
+            It.IsAny<IEnumerable<string>?>()))
+            .ReturnsAsync(emptyConsentDoc);
+
+        // Service principals don't exist initially (return null), then exist after creation (return ID)
+        // Track which SPs have been created
+        var createdSps = new HashSet<string>();
+        _mockGraphService.Setup(x => x.LookupServicePrincipalByAppIdAsync(
+            It.IsAny<string>(), It.Is<string>(appId => appId == MosConstants.TpsAppServicesClientAppId), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => createdSps.Contains(MosConstants.TpsAppServicesClientAppId) ? "sp-object-id" : null);
+        
+        foreach (var resourceAppId in MosConstants.AllResourceAppIds)
+        {
+            var capturedAppId = resourceAppId; // Capture for closure
+            _mockGraphService.Setup(x => x.LookupServicePrincipalByAppIdAsync(
+                It.IsAny<string>(), It.Is<string>(appId => appId == capturedAppId), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(() => createdSps.Contains(capturedAppId) ? "sp-object-id" : null);
+        }
 
         _mockGraphService.Setup(x => x.EnsureServicePrincipalForAppIdAsync(
             It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("sp-object-id");
+            .ReturnsAsync((string tenantId, string appId, CancellationToken ct) =>
+            {
+                createdSps.Add(appId); // Mark as created
+                return "sp-object-id";
+            });
 
         _mockGraphService.Setup(x => x.GraphPatchAsync(
-            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<object>(), default, null))
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<object>(), It.IsAny<CancellationToken>(), It.IsAny<IEnumerable<string>?>()))
             .ReturnsAsync(true);
-
-        _mockGraphService.Setup(x => x.LookupServicePrincipalByAppIdAsync(
-            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("client-sp-object-id");
 
         _mockGraphService.Setup(x => x.ReplaceOauth2PermissionGrantAsync(
             It.IsAny<string>(), 
@@ -273,16 +305,45 @@ public class PublishHelpersTests
     [Fact]
     public async Task EnsureMosPrerequisitesAsync_WhenCalledTwice_IsIdempotent()
     {
-        // Arrange
-        var appWithMosPermissions = JsonDocument.Parse(@"{
-            ""value"": [{
+        // Arrange - app with ALL MOS permissions and consent correctly configured
+        var appWithMosPermissions = JsonDocument.Parse($@"{{
+            ""value"": [{{
                 ""id"": ""app-object-id"",
-                ""requiredResourceAccess"": [{
-                    ""resourceAppId"": ""6ec511af-06dc-4fe2-b493-63a37bc397b1"",
-                    ""resourceAccess"": []
-                }]
-            }]
-        }");
+                ""requiredResourceAccess"": [
+                    {{
+                        ""resourceAppId"": ""{MosConstants.TpsAppServicesResourceAppId}"",
+                        ""resourceAccess"": [{{ ""id"": ""{MosConstants.ResourcePermissions.TpsAppServices.ScopeId}"", ""type"": ""Scope"" }}]
+                    }},
+                    {{
+                        ""resourceAppId"": ""{MosConstants.PowerPlatformApiResourceAppId}"",
+                        ""resourceAccess"": [{{ ""id"": ""{MosConstants.ResourcePermissions.PowerPlatformApi.ScopeId}"", ""type"": ""Scope"" }}]
+                    }},
+                    {{
+                        ""resourceAppId"": ""{MosConstants.MosTitlesApiResourceAppId}"",
+                        ""resourceAccess"": [{{ ""id"": ""{MosConstants.ResourcePermissions.MosTitlesApi.ScopeId}"", ""type"": ""Scope"" }}]
+                    }}
+                ]
+            }}]
+        }}");
+        
+        // Mock consent grants for each MOS resource app with correct scopes
+        var tpsConsentDoc = JsonDocument.Parse($@"{{
+            ""value"": [{{
+                ""scope"": ""{MosConstants.ResourcePermissions.TpsAppServices.ScopeName}""
+            }}]
+        }}");
+        
+        var ppConsentDoc = JsonDocument.Parse($@"{{
+            ""value"": [{{
+                ""scope"": ""{MosConstants.ResourcePermissions.PowerPlatformApi.ScopeName}""
+            }}]
+        }}");
+        
+        var titlesConsentDoc = JsonDocument.Parse($@"{{
+            ""value"": [{{
+                ""scope"": ""{MosConstants.ResourcePermissions.MosTitlesApi.ScopeName}""
+            }}]
+        }}");
         
         _mockGraphService.Setup(x => x.GraphGetAsync(
             It.IsAny<string>(), 
@@ -291,28 +352,47 @@ public class PublishHelpersTests
             It.IsAny<IEnumerable<string>?>()))
             .ReturnsAsync(appWithMosPermissions);
 
-        _mockGraphService.Setup(x => x.CheckServicePrincipalCreationPrivilegesAsync(
-            It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((true, new List<string> { "Application Administrator" }));
+        // Mock consent grants based on resourceId (SP object ID) in the query filter
+        _mockGraphService.Setup(x => x.GraphGetAsync(
+            It.IsAny<string>(), 
+            It.Is<string>(s => s.Contains("oauth2PermissionGrants") && s.Contains("sp-tps")), 
+            It.IsAny<CancellationToken>(),
+            It.IsAny<IEnumerable<string>?>()))
+            .ReturnsAsync(tpsConsentDoc);
+            
+        _mockGraphService.Setup(x => x.GraphGetAsync(
+            It.IsAny<string>(), 
+            It.Is<string>(s => s.Contains("oauth2PermissionGrants") && s.Contains("sp-pp")), 
+            It.IsAny<CancellationToken>(),
+            It.IsAny<IEnumerable<string>?>()))
+            .ReturnsAsync(ppConsentDoc);
+            
+        _mockGraphService.Setup(x => x.GraphGetAsync(
+            It.IsAny<string>(), 
+            It.Is<string>(s => s.Contains("oauth2PermissionGrants") && s.Contains("sp-titles")), 
+            It.IsAny<CancellationToken>(),
+            It.IsAny<IEnumerable<string>?>()))
+            .ReturnsAsync(titlesConsentDoc);
 
-        _mockGraphService.Setup(x => x.EnsureServicePrincipalForAppIdAsync(
-            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("sp-object-id");
+        // Mock service principal lookups - return unique IDs for each resource app
+        _mockGraphService.Setup(x => x.LookupServicePrincipalByAppIdAsync(
+            It.IsAny<string>(), MosConstants.TpsAppServicesClientAppId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync("sp-first-party-client");
+            
+        _mockGraphService.Setup(x => x.LookupServicePrincipalByAppIdAsync(
+            It.IsAny<string>(), MosConstants.TpsAppServicesResourceAppId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync("sp-tps");
+            
+        _mockGraphService.Setup(x => x.LookupServicePrincipalByAppIdAsync(
+            It.IsAny<string>(), MosConstants.PowerPlatformApiResourceAppId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync("sp-pp");
+            
+        _mockGraphService.Setup(x => x.LookupServicePrincipalByAppIdAsync(
+            It.IsAny<string>(), MosConstants.MosTitlesApiResourceAppId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync("sp-titles");
 
         _mockGraphService.Setup(x => x.GraphPatchAsync(
-            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<object>(), default, null))
-            .ReturnsAsync(true);
-
-        _mockGraphService.Setup(x => x.LookupServicePrincipalByAppIdAsync(
-            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("client-sp-object-id");
-
-        _mockGraphService.Setup(x => x.ReplaceOauth2PermissionGrantAsync(
-            It.IsAny<string>(), 
-            It.IsAny<string>(), 
-            It.IsAny<string>(), 
-            It.IsAny<IEnumerable<string>>(), 
-            default))
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<object>(), It.IsAny<CancellationToken>(), It.IsAny<IEnumerable<string>?>()))
             .ReturnsAsync(true);
 
         // Act
@@ -332,9 +412,19 @@ public class PublishHelpersTests
             It.IsAny<CancellationToken>(),
             It.IsAny<IEnumerable<string>?>()), Times.Exactly(2));
         
-        // Service principals are created on each call (twice: 2 * (1 + 3 MOS apps) = 8 total)
+        // When all prerequisites exist, EnsureServicePrincipalForAppIdAsync should NEVER be called (truly idempotent)
         _mockGraphService.Verify(x => x.EnsureServicePrincipalForAppIdAsync(
             It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), 
-            Times.Exactly(2 * (1 + MosConstants.AllResourceAppIds.Length)));
+            Times.Never());
+        
+        // GraphPatchAsync should never be called since permissions are already correct
+        _mockGraphService.Verify(x => x.GraphPatchAsync(
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<object>(), It.IsAny<CancellationToken>(), It.IsAny<IEnumerable<string>?>()), 
+            Times.Never());
+        
+        // ReplaceOauth2PermissionGrantAsync should never be called since consent already exists
+        _mockGraphService.Verify(x => x.ReplaceOauth2PermissionGrantAsync(
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()), 
+            Times.Never());
     }
 }

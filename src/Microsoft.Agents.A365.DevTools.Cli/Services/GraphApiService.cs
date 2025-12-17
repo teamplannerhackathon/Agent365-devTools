@@ -734,6 +734,10 @@ public class GraphApiService
         return true;
     }
 
+    /// <summary>
+    /// Executes a GET request to Microsoft Graph API.
+    /// Virtual to allow mocking in unit tests using Moq.
+    /// </summary>
     public virtual async Task<JsonDocument?> GraphGetAsync(string tenantId, string relativePath, CancellationToken ct = default, IEnumerable<string>? scopes = null)
     {
         if (!await EnsureGraphHeadersAsync(tenantId, ct, scopes)) return null;
@@ -795,6 +799,10 @@ public class GraphApiService
         };
     }
 
+    /// <summary>
+    /// Executes a PATCH request to Microsoft Graph API.
+    /// Virtual to allow mocking in unit tests using Moq.
+    /// </summary>
     public virtual async Task<bool> GraphPatchAsync(string tenantId, string relativePath, object payload, CancellationToken ct = default, IEnumerable<string>? scopes = null)
     {
         if (!await EnsureGraphHeadersAsync(tenantId, ct)) return false;
@@ -844,6 +852,10 @@ public class GraphApiService
         return true;
     }
 
+    /// <summary>
+    /// Looks up a service principal by its application (client) ID.
+    /// Virtual to allow mocking in unit tests using Moq.
+    /// </summary>
     public virtual async Task<string?> LookupServicePrincipalByAppIdAsync(string tenantId, string appId, CancellationToken ct = default)
     {
         var doc = await GraphGetAsync(tenantId, $"/v1.0/servicePrincipals?$filter=appId eq '{appId}'&$select=id", ct);
@@ -852,6 +864,11 @@ public class GraphApiService
         return value[0].GetProperty("id").GetString();
     }
 
+    /// <summary>
+    /// Ensures a service principal exists for the given application ID.
+    /// Creates the service principal if it doesn't already exist.
+    /// Virtual to allow mocking in unit tests using Moq.
+    /// </summary>
     public virtual async Task<string> EnsureServicePrincipalForAppIdAsync(
         string tenantId, string appId, CancellationToken ct = default)
     {
@@ -1121,6 +1138,11 @@ public class GraphApiService
         }
     }
 
+    /// <summary>
+    /// Replaces OAuth2 permission grants for a client/resource pair.
+    /// Deletes all existing grants and creates a new one with the specified scopes.
+    /// Virtual to allow mocking in unit tests using Moq.
+    /// </summary>
     public virtual async Task<bool> ReplaceOauth2PermissionGrantAsync(
         string tenantId,
         string clientSpObjectId,  
@@ -1373,6 +1395,7 @@ public class GraphApiService
 
     /// <summary>
     /// Checks if the current user has sufficient privileges to create service principals.
+    /// Virtual to allow mocking in unit tests using Moq.
     /// </summary>
     /// <param name="tenantId">The tenant ID</param>
     /// <param name="ct">Cancellation token</param>
@@ -1392,7 +1415,7 @@ public class GraphApiService
                 return (false, new List<string>());
             }
 
-            var request = new HttpRequestMessage(HttpMethod.Get, 
+            using var request = new HttpRequestMessage(HttpMethod.Get, 
                 "https://graph.microsoft.com/v1.0/me/memberOf/microsoft.graph.directoryRole");
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
@@ -1409,17 +1432,11 @@ public class GraphApiService
             var roles = new List<string>();
             if (doc.RootElement.TryGetProperty("value", out var rolesArray))
             {
-                foreach (var role in rolesArray.EnumerateArray())
-                {
-                    if (role.TryGetProperty("displayName", out var displayName))
-                    {
-                        var roleName = displayName.GetString();
-                        if (!string.IsNullOrEmpty(roleName))
-                        {
-                            roles.Add(roleName);
-                        }
-                    }
-                }
+                roles = rolesArray.EnumerateArray()
+                    .Where(role => role.TryGetProperty("displayName", out var displayName))
+                    .Select(role => role.GetProperty("displayName").GetString())
+                    .Where(roleName => !string.IsNullOrEmpty(roleName))
+                    .ToList()!;
             }
 
             _logger.LogDebug("User has {Count} directory roles", roles.Count);

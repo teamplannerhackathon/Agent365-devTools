@@ -57,6 +57,80 @@ public static class MosConstants
     };
 
     /// <summary>
+    /// Delegated permission scope IDs for MOS resource applications.
+    /// These IDs are stable Microsoft-defined GUIDs that identify specific OAuth2 permissions.
+    /// To verify these IDs are current, use Graph API or Azure Portal:
+    /// - Graph API: GET https://graph.microsoft.com/v1.0/servicePrincipals(appId='{resourceAppId}')?$select=oauth2PermissionScopes
+    /// - Azure Portal: Enterprise Applications > Search by App ID > Permissions
+    /// </summary>
+    public static class Permissions
+    {
+        /// <summary>
+        /// TPS AppServices 3p App (Server) - AuthConfig.Read permission
+        /// Allows reading authentication configuration
+        /// Scope ID: 6f17ed22-2455-4cfc-a02d-9ccdde5f7f8c
+        /// </summary>
+        public static readonly (string Name, string Id) TpsAppServicesAuthConfigRead = 
+            ("AuthConfig.Read", "6f17ed22-2455-4cfc-a02d-9ccdde5f7f8c");
+
+        /// <summary>
+        /// Power Platform API - EnvironmentManagement.Environments.Read permission
+        /// Allows reading Power Platform environments
+        /// Scope ID: 177690ed-85f1-41d9-8dbf-2716e60ff46a
+        /// </summary>
+        public static readonly (string Name, string Id) PowerPlatformEnvironmentsRead = 
+            ("EnvironmentManagement.Environments.Read", "177690ed-85f1-41d9-8dbf-2716e60ff46a");
+
+        /// <summary>
+        /// MOS Titles API - Title.ReadWrite.All permission
+        /// Allows reading and writing MOS titles (required for package upload)
+        /// Scope ID: ecb8a615-f488-4c95-9efe-cb0142fc07dd
+        /// </summary>
+        public static readonly (string Name, string Id) MosTitlesTitleReadWriteAll = 
+            ("Title.ReadWrite.All", "ecb8a615-f488-4c95-9efe-cb0142fc07dd");
+    }
+
+    /// <summary>
+    /// Complete permission configuration for each MOS resource app.
+    /// Each entry contains: scope name for OAuth2 grants, scope ID for requiredResourceAccess, and resource app ID.
+    /// This centralized mapping ensures consistency between requiredResourceAccess configuration and OAuth2 permission grants.
+    /// </summary>
+    public static class ResourcePermissions
+    {
+        /// <summary>
+        /// Permission configuration for TPS AppServices resource app.
+        /// Required for test environment MOS operations.
+        /// </summary>
+        public static readonly (string ResourceAppId, string ScopeName, string ScopeId) TpsAppServices = 
+            (TpsAppServicesResourceAppId, "AuthConfig.Read", "6f17ed22-2455-4cfc-a02d-9ccdde5f7f8c");
+
+        /// <summary>
+        /// Permission configuration for Power Platform API resource app.
+        /// Required for environment management operations.
+        /// </summary>
+        public static readonly (string ResourceAppId, string ScopeName, string ScopeId) PowerPlatformApi = 
+            (PowerPlatformApiResourceAppId, "EnvironmentManagement.Environments.Read", "177690ed-85f1-41d9-8dbf-2716e60ff46a");
+
+        /// <summary>
+        /// Permission configuration for MOS Titles API resource app.
+        /// Requires multiple scopes for full publish functionality.
+        /// </summary>
+        public static readonly (string ResourceAppId, string ScopeName, string ScopeId) MosTitlesApi = 
+            (MosTitlesApiResourceAppId, "AuthConfig.Read Title.ReadWrite Title.ReadWrite.All", "ecb8a615-f488-4c95-9efe-cb0142fc07dd");
+
+        /// <summary>
+        /// Gets all resource permission configurations.
+        /// Use this to iterate over all MOS resource apps during setup.
+        /// </summary>
+        public static IEnumerable<(string ResourceAppId, string ScopeName, string ScopeId)> GetAll()
+        {
+            yield return TpsAppServices;
+            yield return PowerPlatformApi;
+            yield return MosTitlesApi;
+        }
+    }
+
+    /// <summary>
     /// MOS environment configuration mapping
     /// Maps environment names to their scope URLs
     /// </summary>

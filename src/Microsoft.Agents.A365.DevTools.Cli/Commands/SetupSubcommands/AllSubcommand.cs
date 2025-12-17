@@ -131,10 +131,6 @@ internal static class AllSubcommand
                     if (infraErrors.Count > 0)
                     {
                         allErrors.AddRange(infraErrors.Select(e => $"Infrastructure: {e}"));
-                        foreach (var error in infraErrors)
-                        {
-                            logger.LogError("  - {Error}", error);
-                        }
                     }
                     else
                     {
@@ -148,10 +144,6 @@ internal static class AllSubcommand
                 if (blueprintErrors.Count > 0)
                 {
                     allErrors.AddRange(blueprintErrors.Select(e => $"Blueprint: {e}"));
-                    foreach (var error in blueprintErrors)
-                    {
-                        logger.LogError("  - {Error}", error);
-                    }
                 }
                 else
                 {

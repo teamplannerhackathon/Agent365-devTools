@@ -107,11 +107,9 @@ public static class ConfigCommand
                             }
                             if (ex.MitigationSteps.Count > 0)
                             {
-                                logger.LogError("");
-                                logger.LogError(ErrorMessages.ClientAppValidationFixHeader);
                                 foreach (var step in ex.MitigationSteps)
                                 {
-                                    logger.LogError($"  - {step}");
+                                    logger.LogError(step);
                                 }
                             }
                             logger.LogError("");

@@ -15,6 +15,377 @@ namespace Microsoft.Agents.A365.DevTools.Cli.Helpers;
 public static class PublishHelpers
 {
     /// <summary>
+    /// Checks if all MOS prerequisites are already configured (idempotency check).
+    /// Returns true if service principals, permissions, and admin consent are all in place.
+    /// </summary>
+    private static async Task<bool> CheckMosPrerequisitesAsync(
+        GraphApiService graph,
+        Agent365Config config,
+        System.Text.Json.JsonElement app,
+        ILogger logger,
+        CancellationToken ct)
+    {
+        // Check 1: Verify all required service principals exist
+        var firstPartyClientSpId = await graph.LookupServicePrincipalByAppIdAsync(config.TenantId, 
+            MosConstants.TpsAppServicesClientAppId, ct);
+        if (string.IsNullOrWhiteSpace(firstPartyClientSpId))
+        {
+            logger.LogDebug("First-party client app service principal not found - configuration needed");
+            return false;
+        }
+
+        foreach (var resourceAppId in MosConstants.AllResourceAppIds)
+        {
+            var spId = await graph.LookupServicePrincipalByAppIdAsync(config.TenantId, resourceAppId, ct);
+            if (string.IsNullOrWhiteSpace(spId))
+            {
+                logger.LogDebug("Service principal for {ResourceAppId} not found - configuration needed", resourceAppId);
+                return false;
+            }
+        }
+
+        // Check 2: Verify all MOS permissions are in requiredResourceAccess with correct scopes
+        var mosResourcePermissions = MosConstants.ResourcePermissions.GetAll()
+            .ToDictionary(p => p.ResourceAppId, p => (p.ScopeName, p.ScopeId));
+
+        if (!app.TryGetProperty("requiredResourceAccess", out var currentResourceAccess))
+        {
+            logger.LogDebug("No requiredResourceAccess found - configuration needed");
+            return false;
+        }
+
+        var existingResources = currentResourceAccess.EnumerateArray()
+            .Where(r => r.TryGetProperty("resourceAppId", out var _))
+            .ToList();
+
+        foreach (var (resourceAppId, (scopeName, scopeId)) in mosResourcePermissions)
+        {
+            var existingResource = existingResources
+                .FirstOrDefault(r => r.GetProperty("resourceAppId").GetString() == resourceAppId);
+
+            if (existingResource.ValueKind == System.Text.Json.JsonValueKind.Undefined)
+            {
+                logger.LogDebug("MOS resource {ResourceAppId} not in requiredResourceAccess - configuration needed", resourceAppId);
+                return false;
+            }
+
+            // Verify the correct scope is present
+            if (!existingResource.TryGetProperty("resourceAccess", out var resourceAccessArray))
+            {
+                logger.LogDebug("MOS resource {ResourceAppId} missing resourceAccess - configuration needed", resourceAppId);
+                return false;
+            }
+
+            var hasCorrectScope = resourceAccessArray.EnumerateArray()
+                .Where(permission => permission.TryGetProperty("id", out var _))
+                .Any(permission => permission.GetProperty("id").GetString() == scopeId);
+
+            if (!hasCorrectScope)
+            {
+                logger.LogDebug("MOS resource {ResourceAppId} missing correct scope {ScopeName} - configuration needed", 
+                    resourceAppId, scopeName);
+                return false;
+            }
+        }
+
+        // Check 3: Verify admin consent is granted for all MOS resources
+        var mosResourceScopes = MosConstants.ResourcePermissions.GetAll()
+            .ToDictionary(p => p.ResourceAppId, p => p.ScopeName);
+
+        foreach (var (resourceAppId, scopeName) in mosResourceScopes)
+        {
+            var resourceSpId = await graph.LookupServicePrincipalByAppIdAsync(config.TenantId, resourceAppId, ct);
+            if (string.IsNullOrWhiteSpace(resourceSpId))
+            {
+                logger.LogDebug("Service principal for {ResourceAppId} not found - configuration needed", resourceAppId);
+                return false;
+            }
+
+            // Check if OAuth2 permission grant exists
+            var grantDoc = await graph.GraphGetAsync(config.TenantId,
+                $"/v1.0/oauth2PermissionGrants?$filter=clientId eq '{firstPartyClientSpId}' and resourceId eq '{resourceSpId}'",
+                ct);
+
+            if (grantDoc == null || !grantDoc.RootElement.TryGetProperty("value", out var grants) || grants.GetArrayLength() == 0)
+            {
+                logger.LogDebug("Admin consent not granted for {ResourceAppId} - configuration needed", resourceAppId);
+                return false;
+            }
+
+            // Verify the grant has the correct scope
+            var grant = grants[0];
+            if (!grant.TryGetProperty("scope", out var grantedScopes))
+            {
+                logger.LogDebug("Admin consent for {ResourceAppId} missing scope property - configuration needed", resourceAppId);
+                return false;
+            }
+
+            var scopesString = grantedScopes.GetString();
+            if (string.IsNullOrWhiteSpace(scopesString) || !scopesString.Contains(scopeName))
+            {
+                logger.LogDebug("Admin consent for {ResourceAppId} missing scope {ScopeName} - configuration needed", 
+                    resourceAppId, scopeName);
+                return false;
+            }
+        }
+
+        // All checks passed
+        return true;
+    }
+
+    /// <summary>
+    /// Ensures all required service principals exist for MOS access.
+    /// Idempotent - only creates service principals that don't already exist.
+    /// </summary>
+    private static async Task EnsureMosServicePrincipalsAsync(
+        GraphApiService graph,
+        Agent365Config config,
+        ILogger logger,
+        CancellationToken ct)
+    {
+        // Check 1: First-party client app service principal
+        var firstPartySpId = await graph.LookupServicePrincipalByAppIdAsync(config.TenantId, 
+            MosConstants.TpsAppServicesClientAppId, ct);
+        
+        if (string.IsNullOrWhiteSpace(firstPartySpId))
+        {
+            logger.LogInformation("Creating service principal for Microsoft first-party client app...");
+            
+            try
+            {
+                firstPartySpId = await graph.EnsureServicePrincipalForAppIdAsync(config.TenantId, 
+                    MosConstants.TpsAppServicesClientAppId, ct);
+                
+                if (string.IsNullOrWhiteSpace(firstPartySpId))
+                {
+                    throw new SetupValidationException(
+                        $"Failed to create service principal for Microsoft first-party client app {MosConstants.TpsAppServicesClientAppId}.",
+                        mitigationSteps: ErrorMessages.GetFirstPartyClientAppServicePrincipalMitigation());
+                }
+                
+                logger.LogDebug("Created first-party client app service principal: {SpObjectId}", firstPartySpId);
+            }
+            catch (Exception ex) when (ex is not SetupValidationException)
+            {
+                logger.LogError(ex, "Failed to create service principal for first-party client app");
+                
+                if (ex.Message.Contains("403") || ex.Message.Contains("Insufficient privileges") || 
+                    ex.Message.Contains("Authorization_RequestDenied"))
+                {
+                    throw new SetupValidationException(
+                        "Insufficient privileges to create service principal for Microsoft first-party client app.",
+                        mitigationSteps: ErrorMessages.GetFirstPartyClientAppServicePrincipalMitigation());
+                }
+
+                throw new SetupValidationException($"Failed to create service principal for first-party client app: {ex.Message}");
+            }
+        }
+        else
+        {
+            logger.LogDebug("First-party client app service principal already exists: {SpObjectId}", firstPartySpId);
+        }
+
+        // Check 2: MOS resource app service principals
+        var missingResourceApps = new List<string>();
+        foreach (var resourceAppId in MosConstants.AllResourceAppIds)
+        {
+            var spId = await graph.LookupServicePrincipalByAppIdAsync(config.TenantId, resourceAppId, ct);
+            if (string.IsNullOrWhiteSpace(spId))
+            {
+                missingResourceApps.Add(resourceAppId);
+            }
+        }
+
+        if (missingResourceApps.Count > 0)
+        {
+            logger.LogInformation("Creating service principals for {Count} MOS resource applications...", missingResourceApps.Count);
+            
+            foreach (var resourceAppId in missingResourceApps)
+            {
+                try
+                {
+                    var spId = await graph.EnsureServicePrincipalForAppIdAsync(config.TenantId, resourceAppId, ct);
+                    
+                    if (string.IsNullOrWhiteSpace(spId))
+                    {
+                        throw new SetupValidationException(
+                            $"Failed to create service principal for MOS resource app {resourceAppId}.",
+                            mitigationSteps: ErrorMessages.GetMosServicePrincipalMitigation(resourceAppId));
+                    }
+                    
+                    logger.LogDebug("Created service principal for {ResourceAppId}: {SpObjectId}", resourceAppId, spId);
+                }
+                catch (Exception ex) when (ex is not SetupValidationException)
+                {
+                    logger.LogError(ex, "Failed to create service principal for MOS resource app {ResourceAppId}", resourceAppId);
+                    
+                    if (ex.Message.Contains("403") || ex.Message.Contains("Insufficient privileges") || 
+                        ex.Message.Contains("Authorization_RequestDenied"))
+                    {
+                        throw new SetupValidationException(
+                            $"Insufficient privileges to create service principal for MOS resource app {resourceAppId}.",
+                            mitigationSteps: ErrorMessages.GetMosServicePrincipalMitigation(resourceAppId));
+                    }
+
+                    throw new SetupValidationException($"Failed to create service principal for MOS resource app {resourceAppId}: {ex.Message}");
+                }
+            }
+        }
+        else
+        {
+            logger.LogDebug("All MOS resource app service principals already exist");
+        }
+    }
+
+    /// <summary>
+    /// Ensures MOS permissions are configured in custom client app's requiredResourceAccess.
+    /// Idempotent - only updates if permissions are missing or incorrect.
+    /// </summary>
+    private static async Task EnsureMosPermissionsConfiguredAsync(
+        GraphApiService graph,
+        Agent365Config config,
+        System.Text.Json.JsonElement app,
+        ILogger logger,
+        CancellationToken ct)
+    {
+        if (!app.TryGetProperty("id", out var appObjectIdElement))
+        {
+            throw new SetupValidationException($"Application {config.ClientAppId} missing id property");
+        }
+        var appObjectId = appObjectIdElement.GetString()!;
+
+        // Get existing requiredResourceAccess
+        var resourceAccessList = new List<System.Text.Json.JsonElement>();
+        if (app.TryGetProperty("requiredResourceAccess", out var currentResourceAccess))
+        {
+            resourceAccessList = currentResourceAccess.EnumerateArray().ToList();
+        }
+
+        var mosResourcePermissions = MosConstants.ResourcePermissions.GetAll()
+            .ToDictionary(p => p.ResourceAppId, p => (p.ScopeName, p.ScopeId));
+
+        // Check what needs to be added or fixed
+        var needsUpdate = false;
+        var updatedResourceAccess = new List<object>();
+        var processedMosResources = new HashSet<string>();
+
+        // Process existing resources
+        foreach (var existingResource in resourceAccessList)
+        {
+            if (!existingResource.TryGetProperty("resourceAppId", out var resAppIdProp))
+            {
+                continue;
+            }
+
+            var existingResourceAppId = resAppIdProp.GetString();
+            if (string.IsNullOrEmpty(existingResourceAppId))
+            {
+                continue;
+            }
+
+            if (MosConstants.AllResourceAppIds.Contains(existingResourceAppId))
+            {
+                var (expectedScopeName, expectedScopeId) = mosResourcePermissions[existingResourceAppId];
+                var hasCorrectPermission = false;
+
+                if (existingResource.TryGetProperty("resourceAccess", out var resourceAccessArray))
+                {
+                    hasCorrectPermission = resourceAccessArray.EnumerateArray()
+                        .Where(permission => permission.TryGetProperty("id", out var _))
+                        .Any(permission => permission.GetProperty("id").GetString() == expectedScopeId);
+                }
+
+                if (hasCorrectPermission)
+                {
+                    logger.LogDebug("MOS resource app {ResourceAppId} already has correct permission", existingResourceAppId);
+                    var resourceObj = System.Text.Json.JsonSerializer.Deserialize<object>(existingResource.GetRawText());
+                    if (resourceObj != null)
+                    {
+                        updatedResourceAccess.Add(resourceObj);
+                    }
+                }
+                else
+                {
+                    logger.LogDebug("Fixing permission for MOS resource app {ResourceAppId}", existingResourceAppId);
+                    needsUpdate = true;
+                    updatedResourceAccess.Add(new
+                    {
+                        resourceAppId = existingResourceAppId,
+                        resourceAccess = new[]
+                        {
+                            new { id = expectedScopeId, type = "Scope" }
+                        }
+                    });
+                }
+
+                processedMosResources.Add(existingResourceAppId);
+            }
+            else
+            {
+                // Non-MOS resource - preserve as-is
+                var resourceObj = System.Text.Json.JsonSerializer.Deserialize<object>(existingResource.GetRawText());
+                if (resourceObj != null)
+                {
+                    updatedResourceAccess.Add(resourceObj);
+                }
+            }
+        }
+
+        // Add missing MOS resources
+        var missingResources = MosConstants.AllResourceAppIds
+            .Where(id => !processedMosResources.Contains(id))
+            .ToList();
+
+        if (missingResources.Count > 0)
+        {
+            logger.LogInformation("Adding {Count} missing MOS permissions to custom client app", missingResources.Count);
+            needsUpdate = true;
+
+            foreach (var resourceAppId in missingResources)
+            {
+                var (scopeName, scopeId) = mosResourcePermissions[resourceAppId];
+                logger.LogDebug("Adding MOS resource app {ResourceAppId} with scope {ScopeName}", resourceAppId, scopeName);
+
+                updatedResourceAccess.Add(new
+                {
+                    resourceAppId = resourceAppId,
+                    resourceAccess = new[]
+                    {
+                        new { id = scopeId, type = "Scope" }
+                    }
+                });
+            }
+        }
+
+        // Only update if something changed
+        if (!needsUpdate)
+        {
+            logger.LogDebug("MOS permissions already configured correctly");
+            return;
+        }
+
+        try
+        {
+            var patchPayload = new { requiredResourceAccess = updatedResourceAccess };
+            logger.LogDebug("Updating application {AppObjectId} with {Count} resource access entries", 
+                appObjectId, updatedResourceAccess.Count);
+
+            var updated = await graph.GraphPatchAsync(config.TenantId, $"/v1.0/applications/{appObjectId}", patchPayload, ct);
+            if (!updated)
+            {
+                throw new SetupValidationException("Failed to update application with MOS API permissions.");
+            }
+
+            logger.LogInformation("MOS API permissions configured successfully");
+        }
+        catch (Exception ex) when (ex is not SetupValidationException)
+        {
+            logger.LogError(ex, "Error configuring MOS API permissions");
+            throw new SetupValidationException($"Failed to configure MOS API permissions: {ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// Ensures MOS (Microsoft Online Services) prerequisites are configured for the custom client app.
     /// This includes creating service principals for MOS resource apps and verifying admin consent.
     /// </summary>
@@ -30,16 +401,14 @@ public static class PublishHelpers
         ILogger logger,
         CancellationToken ct = default)
     {
-        logger.LogInformation("Configuring MOS API permissions for publish operations...");
-
         if (string.IsNullOrWhiteSpace(config.ClientAppId))
         {
             logger.LogError("Custom client app ID not found in configuration. Run 'a365 config init' first.");
             throw new SetupValidationException("Custom client app ID is required for MOS token acquisition.");
         }
 
-        // Check if MOS permissions already exist (idempotency check)
-        logger.LogDebug("Checking if MOS permissions already exist in custom client app {ClientAppId}", config.ClientAppId);
+        // Load custom client app
+        logger.LogDebug("Checking MOS prerequisites for custom client app {ClientAppId}", config.ClientAppId);
         var appDoc = await graph.GraphGetAsync(config.TenantId, 
             $"/v1.0/applications?$filter=appId eq '{config.ClientAppId}'&$select=id,requiredResourceAccess", ct);
         
@@ -50,358 +419,106 @@ public static class PublishHelpers
         }
 
         var app = appsArray[0];
+
+        // Check if all MOS prerequisites are already configured (idempotency check)
+        var prerequisitesMet = await CheckMosPrerequisitesAsync(graph, config, app, logger, ct);
+        if (prerequisitesMet)
+        {
+            logger.LogDebug("MOS prerequisites already configured");
+            return true;
+        }
         
-        // Note: Don't early-return here even if MOS apps exist - we need to validate
-        // that they have the correct permissions and fix them if wrong (true idempotency)
-        logger.LogInformation("Configuring MOS API permissions...");
+        logger.LogDebug("Configuring MOS API prerequisites...");
 
-        // Pre-check: Verify user has privileges to create service principals
-        logger.LogDebug("Checking if user has privileges to create service principals...");
-        var (hasPrivileges, userRoles) = await graph.CheckServicePrincipalCreationPrivilegesAsync(config.TenantId, ct);
-        
-        if (!hasPrivileges)
-        {
-            logger.LogWarning("User does not have required roles for service principal creation");
-            logger.LogWarning("User's current roles: {Roles}", string.Join(", ", userRoles));
-            logger.LogWarning("Will attempt service principal creation anyway - may fail if privileges are insufficient");
-            
-            var mitigation = ErrorMessages.GetMosResourceAppsServicePrincipalMitigation();
-            foreach (var line in mitigation)
-            {
-                logger.LogWarning(line);
-            }
-        }
-        else
-        {
-            logger.LogDebug("User has sufficient privileges to create service principals");
-        }
+        // Step 1: Ensure service principals exist (idempotent - only creates if missing)
+        await EnsureMosServicePrincipalsAsync(graph, config, logger, ct);
 
-        // Step 1a: Create service principal for Microsoft first-party client app (required for MOS token acquisition)
-        logger.LogInformation("Creating service principal for Microsoft first-party client app...");
-        logger.LogDebug("Ensuring service principal exists for TPS AppServices 3p App (Client): {ClientAppId}", 
-            MosConstants.TpsAppServicesClientAppId);
-        
-        try
-        {
-            var firstPartySpObjectId = await graph.EnsureServicePrincipalForAppIdAsync(config.TenantId, 
-                MosConstants.TpsAppServicesClientAppId, ct);
-            if (string.IsNullOrWhiteSpace(firstPartySpObjectId))
-            {
-                logger.LogError("Failed to create service principal for Microsoft first-party client app {ClientAppId}", 
-                    MosConstants.TpsAppServicesClientAppId);
-                throw new SetupValidationException(
-                    $"Failed to ensure service principal for Microsoft first-party client app {MosConstants.TpsAppServicesClientAppId}. " +
-                    "This is required for MOS token acquisition. Ensure you have Application.ReadWrite.All or Directory.AccessAsUser.All permissions.");
-            }
-            logger.LogDebug("First-party client app service principal exists with object ID: {SpObjectId}", firstPartySpObjectId);
-        }
-        catch (Exception ex) when (ex is not SetupValidationException)
-        {
-            logger.LogError(ex, "Failed to create service principal for first-party client app: {Message}", ex.Message);
-            
-            if (ex.Message.Contains("403") || ex.Message.Contains("Insufficient privileges") || 
-                ex.Message.Contains("Authorization_RequestDenied"))
-            {
-                var mitigation = ErrorMessages.GetFirstPartyClientAppServicePrincipalMitigation();
-                throw new SetupValidationException(
-                    "Insufficient privileges to create service principal for Microsoft first-party client app",
-                    mitigationSteps: mitigation);
-            }
+        // Step 2: Ensure MOS permissions are configured in requiredResourceAccess (idempotent - only updates if needed)
+        await EnsureMosPermissionsConfiguredAsync(graph, config, app, logger, ct);
 
-            throw new SetupValidationException(
-                $"Failed to create service principal for first-party client app: {ex.Message}");
-        }
-
-        // Step 1b: Create service principals for MOS resource apps (fail-fast on privilege errors)
-        logger.LogInformation("Creating service principals for MOS resource applications...");
-        foreach (var resourceAppId in MosConstants.AllResourceAppIds)
-        {
-            logger.LogDebug("Ensuring service principal exists for MOS resource app {ResourceAppId}", resourceAppId);
-            
-            try
-            {
-                var spObjectId = await graph.EnsureServicePrincipalForAppIdAsync(config.TenantId, resourceAppId, ct);
-                if (string.IsNullOrWhiteSpace(spObjectId))
-                {
-                    logger.LogError("Failed to create or find service principal for MOS resource app {ResourceAppId}", resourceAppId);
-                    throw new SetupValidationException(
-                        $"Failed to ensure service principal for MOS resource app {resourceAppId}. " +
-                        "This operation requires sufficient privileges. Ensure you have Application.ReadWrite.All or Directory.AccessAsUser.All permissions.");
-                }
-                logger.LogDebug("Service principal exists with object ID: {SpObjectId}", spObjectId);
-            }
-            catch (Exception ex) when (ex is not SetupValidationException)
-            {
-                logger.LogError(ex, "Failed to create service principal for MOS resource app {ResourceAppId}: {Message}", 
-                    resourceAppId, ex.Message);
-                
-                // Check if it's a privilege error (403 Forbidden or insufficient privileges message)
-                if (ex.Message.Contains("403") || ex.Message.Contains("Insufficient privileges") || 
-                    ex.Message.Contains("Authorization_RequestDenied"))
-                {
-                    var mitigation = ErrorMessages.GetMosServicePrincipalMitigation(resourceAppId);
-                    throw new SetupValidationException(
-                        $"Insufficient privileges to create service principal for MOS resource app {resourceAppId}",
-                        mitigationSteps: mitigation);
-                }
-
-                throw new SetupValidationException(
-                    $"Failed to create service principal for MOS resource app {resourceAppId}: {ex.Message}");
-            }
-        }
-
-        logger.LogInformation("Service principals created successfully");
-
-        // Step 2: Add MOS resource apps to custom client app's requiredResourceAccess
-        logger.LogInformation("Adding MOS API permissions to custom client app...");
-        
-        // For .default scope to work, the resource apps must be listed in requiredResourceAccess
-        // We don't need to specify individual permissions - just the resource app ID
-        try
-        {
-            // Get the application object (reuse app from earlier check)
-            if (!app.TryGetProperty("id", out var appObjectIdElement))
-            {
-                throw new SetupValidationException($"Application {config.ClientAppId} missing id property");
-            }
-            var appObjectId = appObjectIdElement.GetString()!;
-
-            // Get existing requiredResourceAccess (already retrieved earlier)
-            // Parse as JsonElement to preserve nested structures
-            var resourceAccessList = new List<System.Text.Json.JsonElement>();
-            if (app.TryGetProperty("requiredResourceAccess", out var currentResourceAccess))
-            {
-                resourceAccessList = currentResourceAccess.EnumerateArray().ToList();
-            }
-
-            // Add MOS resource apps if not already present
-            var existingResourceAppIds = new HashSet<string>();
-            foreach (var resource in resourceAccessList)
-            {
-                if (resource.TryGetProperty("resourceAppId", out var resAppId))
-                {
-                    var id = resAppId.GetString();
-                    if (!string.IsNullOrEmpty(id))
-                    {
-                        existingResourceAppIds.Add(id);
-                    }
-                }
-            }
-
-            // Map each MOS resource app to appropriate delegated permission scopes
-            // These permissions are required for publish operations
-            var mosResourcePermissions = new Dictionary<string, (string scopeName, string scopeId)>
-            {
-                // TPS AppServices: AuthConfig.Read (6f17ed22-2455-4cfc-a02d-9ccdde5f7f8c)
-                [MosConstants.TpsAppServicesResourceAppId] = ("AuthConfig.Read", "6f17ed22-2455-4cfc-a02d-9ccdde5f7f8c"),
-                // Power Platform API: EnvironmentManagement.Environments.Read (177690ed-85f1-41d9-8dbf-2716e60ff46a)
-                [MosConstants.PowerPlatformApiResourceAppId] = ("EnvironmentManagement.Environments.Read", "177690ed-85f1-41d9-8dbf-2716e60ff46a"),
-                // MOS Titles API: Title.ReadWrite.All (ecb8a615-f488-4c95-9efe-cb0142fc07dd) - required for package upload
-                [MosConstants.MosTitlesApiResourceAppId] = ("Title.ReadWrite.All", "ecb8a615-f488-4c95-9efe-cb0142fc07dd")
-            };
-
-            // Build the new requiredResourceAccess array (preserve existing + ensure MOS apps have correct permissions)
-            var updatedResourceAccess = new List<object>();
-            var processedMosResources = new HashSet<string>();
-            
-            // First, process all existing resource access entries
-            foreach (var existingResource in resourceAccessList)
-            {
-                if (!existingResource.TryGetProperty("resourceAppId", out var resAppIdProp))
-                {
-                    continue;
-                }
-                
-                var existingResourceAppId = resAppIdProp.GetString();
-                if (string.IsNullOrEmpty(existingResourceAppId))
-                {
-                    continue;
-                }
-                
-                // Check if this is a MOS resource app that needs validation
-                if (MosConstants.AllResourceAppIds.Contains(existingResourceAppId))
-                {
-                    // Validate the permission is correct
-                    var (expectedScopeName, expectedScopeId) = mosResourcePermissions[existingResourceAppId];
-                    var hasCorrectPermission = false;
-                    
-                    if (existingResource.TryGetProperty("resourceAccess", out var resourceAccessArray))
-                    {
-                        foreach (var permission in resourceAccessArray.EnumerateArray())
-                        {
-                            if (permission.TryGetProperty("id", out var permIdProp))
-                            {
-                                var permId = permIdProp.GetString();
-                                if (permId == expectedScopeId)
-                                {
-                                    hasCorrectPermission = true;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    
-                    if (hasCorrectPermission)
-                    {
-                        logger.LogDebug("MOS resource app {ResourceAppId} has correct permission {ScopeName}", 
-                            existingResourceAppId, expectedScopeName);
-                        // Keep existing entry as-is
-                        var resourceObj = System.Text.Json.JsonSerializer.Deserialize<object>(existingResource.GetRawText());
-                        if (resourceObj != null)
-                        {
-                            updatedResourceAccess.Add(resourceObj);
-                        }
-                    }
-                    else
-                    {
-                        logger.LogWarning("MOS resource app {ResourceAppId} has incorrect or missing permission - updating to {ScopeName} ({ScopeId})", 
-                            existingResourceAppId, expectedScopeName, expectedScopeId);
-                        // Replace with correct permission
-                        updatedResourceAccess.Add(new
-                        {
-                            resourceAppId = existingResourceAppId,
-                            resourceAccess = new[]
-                            {
-                                new
-                                {
-                                    id = expectedScopeId,
-                                    type = "Scope"
-                                }
-                            }
-                        });
-                    }
-                    
-                    processedMosResources.Add(existingResourceAppId);
-                }
-                else
-                {
-                    // Non-MOS resource app - preserve as-is
-                    var resourceObj = System.Text.Json.JsonSerializer.Deserialize<object>(existingResource.GetRawText());
-                    if (resourceObj != null)
-                    {
-                        updatedResourceAccess.Add(resourceObj);
-                    }
-                }
-            }
-            
-            // Then, add any MOS resource apps that don't exist yet
-            foreach (var resourceAppId in MosConstants.AllResourceAppIds)
-            {
-                if (!processedMosResources.Contains(resourceAppId))
-                {
-                    var (scopeName, scopeId) = mosResourcePermissions[resourceAppId];
-                    logger.LogInformation("Adding MOS resource app {ResourceAppId} with permission {ScopeName} ({ScopeId})", 
-                        resourceAppId, scopeName, scopeId);
-                    
-                    updatedResourceAccess.Add(new
-                    {
-                        resourceAppId = resourceAppId,
-                        resourceAccess = new[]
-                        {
-                            new
-                            {
-                                id = scopeId,
-                                type = "Scope"
-                            }
-                        }
-                    });
-                }
-            }
-
-            // Update the application
-            var patchPayload = new
-            {
-                requiredResourceAccess = updatedResourceAccess
-            };
-
-            logger.LogDebug("Updating application {AppObjectId} with {Count} resource access entries", 
-                appObjectId, updatedResourceAccess.Count);
-            logger.LogDebug("Payload: {Payload}", System.Text.Json.JsonSerializer.Serialize(patchPayload));
-            
-            var updated = await graph.GraphPatchAsync(config.TenantId, $"/v1.0/applications/{appObjectId}", patchPayload, ct);
-            if (updated)
-            {
-                logger.LogInformation("MOS API permissions configured successfully");
-            }
-            else
-            {
-                logger.LogError("Failed to update MOS API permissions - Graph PATCH returned false");
-                logger.LogError("This likely means the Graph API returned an error status code");
-                logger.LogError("Check that you have Application.ReadWrite.All permission and sufficient privileges");
-                throw new SetupValidationException("Failed to update application with MOS API permissions. Check logs for details.");
-            }
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Error configuring MOS API permissions: {Message}", ex.Message);
-            throw new SetupValidationException($"Failed to configure MOS API permissions: {ex.Message}");
-        }
-
-        // Step 3: Grant admin consent for MOS permissions
-        await GrantMosAdminConsentAsync(graph, config, logger, ct);
+        // Step 3: Ensure admin consent is granted for MOS permissions (idempotent - only grants if missing)
+        await EnsureMosAdminConsentAsync(graph, config, logger, ct);
 
         return true;
     }
 
     /// <summary>
-    /// Grants admin consent for MOS permissions by creating OAuth2 permission grants.
+    /// Ensures admin consent is granted for MOS permissions.
+    /// Idempotent - only grants consent for resources that don't already have it.
     /// Uses the Microsoft first-party client app for MOS access (required by MOS APIs).
-    /// This ensures that tokens acquired for MOS resource apps will have the required scopes.
     /// </summary>
-    private static async Task GrantMosAdminConsentAsync(
+    private static async Task EnsureMosAdminConsentAsync(
         GraphApiService graph,
         Agent365Config config,
         ILogger logger,
         CancellationToken ct)
     {
-        logger.LogInformation("Granting admin consent for MOS API permissions...");
-
-        // Use Microsoft first-party client app for MOS access (not custom client app)
-        // MOS APIs only accept tokens from Microsoft first-party apps
-        var firstPartyClientAppId = MosConstants.TpsAppServicesClientAppId;
-        logger.LogDebug("Using Microsoft first-party client app for MOS admin consent: {ClientAppId}", firstPartyClientAppId);
-        
         // Look up the first-party client app's service principal
-        var clientSpObjectId = await graph.LookupServicePrincipalByAppIdAsync(config.TenantId, firstPartyClientAppId, ct);
+        var clientSpObjectId = await graph.LookupServicePrincipalByAppIdAsync(config.TenantId, 
+            MosConstants.TpsAppServicesClientAppId, ct);
+        
         if (string.IsNullOrWhiteSpace(clientSpObjectId))
         {
-            logger.LogError("Could not find service principal for Microsoft first-party client app {ClientAppId}", firstPartyClientAppId);
-            logger.LogError("The service principal should have been created earlier in this process");
-            throw new SetupValidationException($"Service principal not found for Microsoft first-party client app {firstPartyClientAppId}");
+            throw new SetupValidationException(
+                $"Service principal not found for Microsoft first-party client app {MosConstants.TpsAppServicesClientAppId}");
         }
 
         logger.LogDebug("First-party client service principal ID: {ClientSpObjectId}", clientSpObjectId);
 
-        // Define the scope names for each MOS resource app
-        // Must match exactly what the internal PowerShell script uses
-        var mosResourceScopes = new Dictionary<string, string>
-        {
-            { MosConstants.TpsAppServicesResourceAppId, "AuthConfig.Read" },
-            { MosConstants.PowerPlatformApiResourceAppId, "EnvironmentManagement.Environments.Read" },
-            // MOS Titles API requires three scopes: AuthConfig.Read, Title.ReadWrite, and Title.ReadWrite.All
-            { MosConstants.MosTitlesApiResourceAppId, "AuthConfig.Read Title.ReadWrite Title.ReadWrite.All" }
-        };
+        var mosResourceScopes = MosConstants.ResourcePermissions.GetAll()
+            .ToDictionary(p => p.ResourceAppId, p => p.ScopeName);
 
-        // Grant consent for each MOS resource app
+        var resourcesToConsent = new List<(string ResourceAppId, string ScopeName, string ResourceSpId)>();
+
+        // Check which resources need consent
         foreach (var (resourceAppId, scopeName) in mosResourceScopes)
         {
-            logger.LogInformation("Granting admin consent for MOS resource app {ResourceAppId} with scopes: {ScopeName}", 
-                resourceAppId, scopeName);
-
-            // Look up the resource app's service principal
             var resourceSpObjectId = await graph.LookupServicePrincipalByAppIdAsync(config.TenantId, resourceAppId, ct);
             if (string.IsNullOrWhiteSpace(resourceSpObjectId))
             {
-                logger.LogWarning("Service principal not found for MOS resource app {ResourceAppId}", resourceAppId);
-                logger.LogWarning("Run the following command to create it:");
-                logger.LogWarning("  az ad sp create --id {ResourceAppId}", resourceAppId);
+                logger.LogWarning("Service principal not found for MOS resource app {ResourceAppId} - skipping consent", resourceAppId);
                 continue;
             }
 
-            logger.LogDebug("MOS resource service principal ID: {ResourceSpObjectId}", resourceSpObjectId);
+            // Check if consent already exists
+            var grantDoc = await graph.GraphGetAsync(config.TenantId,
+                $"/v1.0/oauth2PermissionGrants?$filter=clientId eq '{clientSpObjectId}' and resourceId eq '{resourceSpObjectId}'",
+                ct);
 
-            // Grant consent using ReplaceOauth2PermissionGrantAsync
-            // This will delete any existing grant and create a new one with the correct scope
+            var hasConsent = false;
+            if (grantDoc != null && grantDoc.RootElement.TryGetProperty("value", out var grants) && grants.GetArrayLength() > 0)
+            {
+                var grant = grants[0];
+                if (grant.TryGetProperty("scope", out var grantedScopes))
+                {
+                    var scopesString = grantedScopes.GetString();
+                    hasConsent = !string.IsNullOrWhiteSpace(scopesString) && scopesString.Contains(scopeName);
+                }
+            }
+
+            if (hasConsent)
+            {
+                logger.LogDebug("Admin consent already granted for {ResourceAppId}", resourceAppId);
+            }
+            else
+            {
+                resourcesToConsent.Add((resourceAppId, scopeName, resourceSpObjectId));
+            }
+        }
+
+        // Grant consent for resources that need it
+        if (resourcesToConsent.Count == 0)
+        {
+            logger.LogDebug("Admin consent already configured for all MOS resources");
+            return;
+        }
+
+        logger.LogInformation("Granting admin consent for {Count} MOS resources", resourcesToConsent.Count);
+
+        foreach (var (resourceAppId, scopeName, resourceSpObjectId) in resourcesToConsent)
+        {
+            logger.LogDebug("Granting admin consent for {ResourceAppId} with scope {ScopeName}", resourceAppId, scopeName);
+
             var success = await graph.ReplaceOauth2PermissionGrantAsync(
                 config.TenantId,
                 clientSpObjectId,
@@ -409,16 +526,9 @@ public static class PublishHelpers
                 new[] { scopeName },
                 ct);
 
-            if (success)
+            if (!success)
             {
-                logger.LogInformation("Successfully granted admin consent for MOS resource app {ResourceAppId}", 
-                    resourceAppId);
-            }
-            else
-            {
-                logger.LogWarning("Failed to grant admin consent for {ResourceAppId} ({ScopeName})", 
-                    resourceAppId, scopeName);
-                logger.LogWarning("You may need to grant consent manually in Azure Portal");
+                logger.LogWarning("Failed to grant admin consent for {ResourceAppId}", resourceAppId);
             }
         }
 
@@ -426,7 +536,8 @@ public static class PublishHelpers
         
         // Clear cached MOS tokens to force re-acquisition with new scopes
         logger.LogDebug("Clearing cached MOS tokens to force re-acquisition with updated permissions");
-        var cacheFilePath = Path.Combine(Environment.CurrentDirectory, ".mos-token-cache.json");
+        var cacheDir = FileHelper.GetSecureCrossOsDirectory();
+        var cacheFilePath = Path.Combine(cacheDir, "mos-token-cache.json");
         if (File.Exists(cacheFilePath))
         {
             try

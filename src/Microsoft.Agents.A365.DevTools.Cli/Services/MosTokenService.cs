@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 using Microsoft.Agents.A365.DevTools.Cli.Constants;
+using Microsoft.Agents.A365.DevTools.Cli.Helpers;
 using Microsoft.Extensions.Logging;
 using Microsoft.Identity.Client;
 
@@ -21,7 +22,11 @@ public class MosTokenService
     {
         _logger = logger;
         _configService = configService;
-        _cacheFilePath = Path.Combine(Environment.CurrentDirectory, ".mos-token-cache.json");
+        
+        // Store token cache in user's home directory for security
+        // Avoid current directory which may have shared/inappropriate permissions
+        var cacheDir = FileHelper.GetSecureCrossOsDirectory();
+        _cacheFilePath = Path.Combine(cacheDir, "mos-token-cache.json");
     }
 
     /// <summary>
@@ -224,7 +229,22 @@ public class MosTokenService
             var updated = System.Text.Json.JsonSerializer.Serialize(cache, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(_cacheFilePath, updated);
 
-            _logger.LogDebug("Token cached for environment: {Environment}", environment);
+            // Set file permissions to user-only on Unix systems
+            if (!OperatingSystem.IsWindows())
+            {
+                try
+                {
+                    var fileInfo = new FileInfo(_cacheFilePath);
+                    fileInfo.UnixFileMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+                    _logger.LogDebug("Set secure permissions (0600) on token cache file");
+                }
+                catch (Exception permEx)
+                {
+                    _logger.LogWarning(permEx, "Failed to set Unix file permissions on token cache");
+                }
+            }
+
+            _logger.LogDebug("Token cached for environment: {Environment} at {Path}", environment, _cacheFilePath);
         }
         catch (Exception ex)
         {

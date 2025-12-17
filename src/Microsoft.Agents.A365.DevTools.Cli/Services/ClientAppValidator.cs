@@ -146,7 +146,7 @@ public sealed class ClientAppValidator : IClientAppValidator
 
         if (!tokenResult.Success || string.IsNullOrWhiteSpace(tokenResult.StandardOutput))
         {
-            _logger.LogError("Token acquisition failed: {Error}", tokenResult.StandardError);
+            _logger.LogDebug("Token acquisition failed: {Error}", tokenResult.StandardError);
             return null;
         }
 
@@ -193,7 +193,7 @@ public sealed class ClientAppValidator : IClientAppValidator
                     }
                     else
                     {
-                        _logger.LogError("App query failed after token refresh: {Error}", retryResult.StandardError);
+                        _logger.LogDebug("App query failed after token refresh: {Error}", retryResult.StandardError);
                         return null;
                     }
                 }
@@ -201,7 +201,7 @@ public sealed class ClientAppValidator : IClientAppValidator
             
             if (!appCheckResult.Success)
             {
-                _logger.LogError("App query failed: {Error}", appCheckResult.StandardError);
+                _logger.LogDebug("App query failed: {Error}", appCheckResult.StandardError);
                 return null;
             }
         }
