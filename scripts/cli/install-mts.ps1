@@ -1,6 +1,6 @@
 # install-mts.ps1
 # This script installs the MockToolingServer as a global dotnet tool from a local NuGet package.
-# Usage: Run this script from the root of the extracted package (where publish/ exists)
+# Usage: Run this script from the repository root to install MockToolingServer as a global dotnet tool.
 
 # Get the repository root directory (two levels up from scripts/cli/)
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)

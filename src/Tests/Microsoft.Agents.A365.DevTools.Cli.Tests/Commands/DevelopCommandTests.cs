@@ -15,7 +15,7 @@ public class DevelopCommandTests
     private readonly CommandExecutor _mockCommandExecutor;
     private readonly AuthenticationService _mockAuthService;
     private readonly GraphApiService _mockGraphApiService;
-    private readonly ProcessService _mockProcessService;
+    private readonly IProcessService _mockProcessService;
 
     public DevelopCommandTests()
     {
@@ -34,7 +34,7 @@ public class DevelopCommandTests
         var mockGraphApiLogger = Substitute.For<ILogger<GraphApiService>>();
         _mockGraphApiService = Substitute.ForPartsOf<GraphApiService>(mockGraphApiLogger, _mockCommandExecutor);
 
-        _mockProcessService = Substitute.For<ProcessService>();
+        _mockProcessService = Substitute.For<IProcessService>();
     }
 
     [Fact]
