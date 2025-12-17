@@ -117,6 +117,16 @@ public static class ErrorMessages
 
     #endregion
 
+    #region Client App Validation Messages
+
+    public const string ClientAppValidationFailed = 
+        "Client app validation FAILED:";
+
+    public const string ClientAppValidationFixHeader = 
+        "To fix this:";
+
+    #endregion
+
     #region MOS Token and Prerequisites Messages
 
     public const string MosClientAppIdMissing = 
