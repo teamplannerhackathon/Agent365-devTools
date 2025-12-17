@@ -11,7 +11,7 @@ using System.Diagnostics;
 
 namespace Microsoft.Agents.A365.DevTools.Cli.Tests.Commands;
 
-public class StartMockToolingServerSubcommandTests
+public class StartMockToolingServerSubcommandTests : IDisposable
 {
     private readonly ILogger _mockLogger;
     private readonly CommandExecutor _mockCommandExecutor;
@@ -27,8 +27,16 @@ public class StartMockToolingServerSubcommandTests
         var mockExecutorLogger = Substitute.For<ILogger<CommandExecutor>>();
         _mockCommandExecutor = Substitute.ForPartsOf<CommandExecutor>(mockExecutorLogger);
 
-        // Setup mock to return null (terminal launch fails) to force fallback to CommandExecutor
-        _mockProcessService.Start(Arg.Any<ProcessStartInfo>()).Returns((Process?)null);
+        // Clear any previous state - this runs before each test
+        _testLogger.LogCalls.Clear();
+        _mockProcessService.ClearReceivedCalls();
+        _mockCommandExecutor.ClearReceivedCalls();
+    }
+
+    public void Dispose()
+    {
+        // Cleanup after each test if needed
+        _testLogger.LogCalls.Clear();
     }
 
     // Test logger that captures calls for verification
@@ -230,10 +238,10 @@ public class StartMockToolingServerSubcommandTests
     [Fact]
     public async Task HandleStartServer_WithNullPort_UsesDefaultPort()
     {
-        // Arrange - Setup CommandExecutor mock to prevent hanging when fallback is triggered
-        var mockResult = new Microsoft.Agents.A365.DevTools.Cli.Services.CommandResult { ExitCode = 0, StandardOutput = "Server started", StandardError = "" };
-        _mockCommandExecutor.ExecuteWithStreamingAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(mockResult));
+        // Arrange - Configure to return a mock process (terminal launch succeeds)
+        // This prevents fallback to CommandExecutor which would actually start the server
+        var mockProcess = Substitute.For<Process>();
+        _mockProcessService.Start(Arg.Any<ProcessStartInfo>()).Returns(mockProcess);
 
         // Act
         await StartMockToolingServerSubcommand.HandleStartServer(null, _testLogger, _mockCommandExecutor, _mockProcessService);
@@ -244,6 +252,11 @@ public class StartMockToolingServerSubcommandTests
         Assert.Equal(LogLevel.Information, firstLogCall.Level);
         Assert.Contains("Starting Mock Tooling Server", firstLogCall.Message);
         Assert.Contains("5309", firstLogCall.Message);
+
+        // Verify success message is logged (no fallback occurred)
+        Assert.Contains(_testLogger.LogCalls, call =>
+            call.Level == LogLevel.Information &&
+            call.Message.Contains("Mock Tooling Server started successfully in a new terminal window"));
     }
 
     [Theory]
@@ -253,20 +266,25 @@ public class StartMockToolingServerSubcommandTests
     [InlineData(65535)]
     public async Task HandleStartServer_WithValidPort_LogsStartingMessage(int validPort)
     {
-        // Arrange - Setup CommandExecutor mock to prevent hanging when fallback is triggered
-        var mockResult = new Microsoft.Agents.A365.DevTools.Cli.Services.CommandResult { ExitCode = 0, StandardOutput = "Server started", StandardError = "" };
-        _mockCommandExecutor.ExecuteWithStreamingAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(mockResult));
+        // Arrange - Configure to return a mock process (terminal launch succeeds)
+        // This prevents fallback to CommandExecutor which would actually start the server
+        var mockProcess = Substitute.For<Process>();
+        _mockProcessService.Start(Arg.Any<ProcessStartInfo>()).Returns(mockProcess);
 
         // Act
         await StartMockToolingServerSubcommand.HandleStartServer(validPort, _testLogger, _mockCommandExecutor, _mockProcessService);
 
-        // Assert - Should log starting message with specified port
+        // Assert - Should log starting message with specified port and success message
         Assert.NotEmpty(_testLogger.LogCalls);
         var firstLogCall = _testLogger.LogCalls.First();
         Assert.Equal(LogLevel.Information, firstLogCall.Level);
         Assert.Contains("Starting Mock Tooling Server", firstLogCall.Message);
         Assert.Contains(validPort.ToString(), firstLogCall.Message);
+
+        // Verify success message is logged (no fallback occurred)
+        Assert.Contains(_testLogger.LogCalls, call =>
+            call.Level == LogLevel.Information &&
+            call.Message.Contains("Mock Tooling Server started successfully in a new terminal window"));
     }
 
     [Fact]
@@ -285,7 +303,7 @@ public class StartMockToolingServerSubcommandTests
     [Fact]
     public async Task HandleStartServer_WhenTerminalLaunchFails_LogsWarningAndAttemptsFallback()
     {
-        // Arrange - Process service returns null (terminal launch fails)
+        // Arrange - Configure process service to return null (terminal launch fails)
         var mockResult = new Microsoft.Agents.A365.DevTools.Cli.Services.CommandResult { ExitCode = 0, StandardOutput = "Server started", StandardError = "" };
         _mockProcessService.Start(Arg.Any<ProcessStartInfo>()).Returns((Process?)null);
         _mockCommandExecutor.ExecuteWithStreamingAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
@@ -320,7 +338,7 @@ public class StartMockToolingServerSubcommandTests
     [Fact]
     public async Task HandleStartServer_WhenTerminalLaunchSucceeds_DoesNotUseFallback()
     {
-        // Arrange - Process service returns a mock process (terminal launch succeeds)
+        // Arrange - Configure process service to return a mock process (terminal launch succeeds)
         var mockProcess = Substitute.For<Process>();
         _mockProcessService.Start(Arg.Any<ProcessStartInfo>()).Returns(mockProcess);
 
@@ -354,7 +372,7 @@ public class StartMockToolingServerSubcommandTests
     [Fact]
     public async Task HandleStartServer_WhenFallbackCommandFails_LogsError()
     {
-        // Arrange - Terminal fails, and CommandExecutor also fails
+        // Arrange - Configure terminal to fail, and CommandExecutor also fails
         var failedResult = new Microsoft.Agents.A365.DevTools.Cli.Services.CommandResult { ExitCode = 1, StandardOutput = "", StandardError = "Server failed to start" };
         _mockProcessService.Start(Arg.Any<ProcessStartInfo>()).Returns((Process?)null);
         _mockCommandExecutor.ExecuteWithStreamingAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())

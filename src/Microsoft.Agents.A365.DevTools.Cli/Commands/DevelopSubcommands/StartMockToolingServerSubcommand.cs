@@ -158,7 +158,7 @@ internal static class StartMockToolingServerSubcommand
             }
             else
             {
-                processStartInfo = ConfigureLinuxTerminal(command, arguments, logger);
+                processStartInfo = ConfigureLinuxTerminal(command, arguments, logger, processService);
             }
 
             if (processStartInfo == null)
@@ -187,7 +187,7 @@ internal static class StartMockToolingServerSubcommand
     /// <param name="command">The command to execute</param>
     /// <param name="arguments">The command arguments</param>
     /// <returns>Configured ProcessStartInfo</returns>
-    private static ProcessStartInfo ConfigureWindowsTerminal(string command, string arguments)
+    internal static ProcessStartInfo ConfigureWindowsTerminal(string command, string arguments)
     {
         var processStartInfo = new ProcessStartInfo();
 
@@ -197,15 +197,19 @@ internal static class StartMockToolingServerSubcommand
 
         if (File.Exists(windowsTerminalPath))
         {
-            // Use Windows Terminal
+            // Use Windows Terminal with ArgumentList for proper escaping
             processStartInfo.FileName = windowsTerminalPath;
-            processStartInfo.Arguments = $"--title \"Mock Tooling Server\" -- {command} {arguments}";
+            processStartInfo.ArgumentList.Add("--title");
+            processStartInfo.ArgumentList.Add("Mock Tooling Server");
+            processStartInfo.ArgumentList.Add("--");
+            processStartInfo.ArgumentList.Add($"{command} {arguments}");
         }
         else
         {
-            // Fallback to cmd
+            // Fallback to cmd with ArgumentList for proper escaping
             processStartInfo.FileName = "cmd.exe";
-            processStartInfo.Arguments = $"/k \"{command} {arguments}\"";
+            processStartInfo.ArgumentList.Add("/k");
+            processStartInfo.ArgumentList.Add($"{command} {arguments}");
         }
 
         return processStartInfo;
@@ -217,13 +221,16 @@ internal static class StartMockToolingServerSubcommand
     /// <param name="command">The command to execute</param>
     /// <param name="arguments">The command arguments</param>
     /// <returns>Configured ProcessStartInfo</returns>
-    private static ProcessStartInfo ConfigureMacOSTerminal(string command, string arguments)
+    internal static ProcessStartInfo ConfigureMacOSTerminal(string command, string arguments)
     {
         var processStartInfo = new ProcessStartInfo
         {
-            FileName = "osascript",
-            Arguments = $"-e \"tell application \\\"Terminal\\\" to do script \\\"{command} {arguments}\\\"\""
+            FileName = "osascript"
         };
+
+        // Use ArgumentList for proper escaping of AppleScript command
+        processStartInfo.ArgumentList.Add("-e");
+        processStartInfo.ArgumentList.Add($"tell application \"Terminal\" to do script \"{command} {arguments}\"");
 
         return processStartInfo;
     }
@@ -235,7 +242,7 @@ internal static class StartMockToolingServerSubcommand
     /// <param name="arguments">The command arguments</param>
     /// <param name="logger">Logger for error reporting</param>
     /// <returns>Configured ProcessStartInfo or null if no suitable terminal found</returns>
-    private static ProcessStartInfo? ConfigureLinuxTerminal(string command, string arguments, ILogger logger)
+    internal static ProcessStartInfo? ConfigureLinuxTerminal(string command, string arguments, ILogger logger, IProcessService processService)
     {
         // Try common terminal emulators
         var terminals = new[] { "gnome-terminal", "xterm", "konsole", "x-terminal-emulator" };
@@ -245,7 +252,7 @@ internal static class StartMockToolingServerSubcommand
         {
             try
             {
-                var which = Process.Start(new ProcessStartInfo
+                var which = processService.Start(new ProcessStartInfo
                 {
                     FileName = "which",
                     Arguments = terminal,
@@ -278,9 +285,18 @@ internal static class StartMockToolingServerSubcommand
             FileName = foundTerminal
         };
 
-        processStartInfo.Arguments = foundTerminal == "gnome-terminal" ?
-            $"--title=\"Mock Tooling Server\" -- {command} {arguments}" :
-            $"-e \"{command} {arguments}\"";
+        // Use ArgumentList for proper escaping based on terminal type
+        if (foundTerminal == "gnome-terminal")
+        {
+            processStartInfo.ArgumentList.Add("--title=Mock Tooling Server");
+            processStartInfo.ArgumentList.Add("--");
+            processStartInfo.ArgumentList.Add($"{command} {arguments}");
+        }
+        else
+        {
+            processStartInfo.ArgumentList.Add("-e");
+            processStartInfo.ArgumentList.Add($"{command} {arguments}");
+        }
 
         return processStartInfo;
     }
