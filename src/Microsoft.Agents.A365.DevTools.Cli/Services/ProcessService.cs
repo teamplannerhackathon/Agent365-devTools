@@ -76,7 +76,6 @@ public class ProcessService : IProcessService
             processStartInfo.FileName = windowsTerminalPath;
             processStartInfo.ArgumentList.Add("--");
             processStartInfo.ArgumentList.Add(command);
-            processStartInfo.ArgumentList.Add(arguments);
         }
         else
         {
@@ -84,7 +83,13 @@ public class ProcessService : IProcessService
             processStartInfo.FileName = "cmd.exe";
             processStartInfo.ArgumentList.Add("/k");
             processStartInfo.ArgumentList.Add(command);
-            processStartInfo.ArgumentList.Add(arguments);
+        }
+
+        // Add each argument separately by splitting on spaces (handling quoted paths)
+        var argParts = SplitArguments(arguments);
+        foreach (var arg in argParts)
+        {
+            processStartInfo.ArgumentList.Add(arg);
         }
 
         return processStartInfo;
@@ -167,16 +172,81 @@ public class ProcessService : IProcessService
         {
             processStartInfo.ArgumentList.Add("--");
             processStartInfo.ArgumentList.Add(command);
-            processStartInfo.ArgumentList.Add(arguments);
         }
         else
         {
             processStartInfo.ArgumentList.Add("-e");
             processStartInfo.ArgumentList.Add(command);
-            processStartInfo.ArgumentList.Add(arguments);
+        }
+
+        // Add each argument separately by splitting on spaces (handling quoted paths)
+        var argParts = SplitArguments(arguments);
+        foreach (var arg in argParts)
+        {
+            processStartInfo.ArgumentList.Add(arg);
         }
 
         return processStartInfo;
+    }
+
+    /// <summary>
+    /// Splits command arguments while respecting quoted strings
+    /// </summary>
+    /// <param name="arguments">The arguments string to split</param>
+    /// <returns>Array of individual arguments</returns>
+    private static string[] SplitArguments(string arguments)
+    {
+        var result = new List<string>();
+        var current = new System.Text.StringBuilder();
+        bool inQuotes = false;
+
+        for (int i = 0; i < arguments.Length; i++)
+        {
+            char c = arguments[i];
+
+            // Handle escape sequences
+            if (c == '\\' && i + 1 < arguments.Length)
+            {
+                char nextChar = arguments[i + 1];
+                // Check if this is an escaped quote
+                if (nextChar == '"')
+                {
+                    // Add the escaped quote without toggling inQuotes
+                    current.Append('\\');
+                    current.Append('"');
+                    i++; // Skip the next character since we've processed it
+                    continue;
+                }
+                // For other escape sequences, add the backslash and let normal processing handle the next character
+                current.Append(c);
+            }
+            else if (c == '"')
+            {
+                // Only toggle quotes if this is not an escaped quote
+                // Don't append the quote character itself since ProcessStartInfo.ArgumentList handles escaping
+                inQuotes = !inQuotes;
+            }
+            else if (c == ' ' && !inQuotes)
+            {
+                // Split on space only when not inside quotes
+                if (current.Length > 0)
+                {
+                    result.Add(current.ToString());
+                    current.Clear();
+                }
+            }
+            else
+            {
+                current.Append(c);
+            }
+        }
+
+        if (current.Length > 0)
+        {
+            result.Add(current.ToString());
+        }
+
+        return result.ToArray();
     }
 
     /// <summary>

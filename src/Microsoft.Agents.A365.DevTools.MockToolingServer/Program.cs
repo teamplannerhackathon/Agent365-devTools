@@ -49,7 +49,7 @@ var app = builder.Build();
 var logger = app.Services.GetRequiredService<ILogger<Program>>();
 logger.LogInformation("===== MCP SERVER STARTING =====");
 logger.LogInformation("Startup Time: {StartupTime} UTC", DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss.fff"));
-logger.LogInformation("Server will be available on: http://localhost:5309");
+logger.LogInformation("Server will be available on: {Url}", app.Configuration["urls"]);
 foreach (var serverName in mcpServerNames)
 {
     logger.LogInformation("Mock tools file for '{ServerName}': {File}", serverName, Path.Combine(AppContext.BaseDirectory, "mocks", serverName + ".json"));
