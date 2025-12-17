@@ -43,6 +43,17 @@ public class MockToolingServerSubcommandTests : IDisposable
             Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(defaultMockResult));
 
+        // Return that the tool is installed by default
+        _mockCommandExecutor.ExecuteAsync(
+            Arg.Is<string>(cmd => cmd.StartsWith("dotnet tool list --global")),
+            Arg.Any<string>())
+            .Returns(Task.FromResult(new Microsoft.Agents.A365.DevTools.Cli.Services.CommandResult
+            {
+                ExitCode = 0,
+                StandardOutput = "Microsoft.Agents.A365.DevTools.MockToolingServer",
+                StandardError = ""
+            }));
+
         // Clear any previous state - this runs before each test
         _testLogger.LogCalls.Clear();
         _mockProcessService.ClearReceivedCalls();
