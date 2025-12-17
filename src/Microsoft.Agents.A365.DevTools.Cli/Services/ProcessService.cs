@@ -46,11 +46,6 @@ public class ProcessService : IProcessService
             processStartInfo.UseShellExecute = true;
             processStartInfo.CreateNoWindow = false;
 
-            logger.LogInformation("Executing command: {FileName} with arguments: [{Arguments}] in directory: {WorkingDirectory}",
-                processStartInfo.FileName,
-                string.Join(", ", processStartInfo.ArgumentList),
-                workingDirectory);
-
             var process = Start(processStartInfo);
             return process != null;
         }
@@ -84,64 +79,23 @@ public class ProcessService : IProcessService
             processStartInfo.ArgumentList.Add("--");
             processStartInfo.ArgumentList.Add(command);
 
-            // Add each argument separately by splitting on spaces (handling quoted paths)
-            var argParts = SplitArguments(arguments);
-            foreach (var arg in argParts)
-            {
-                processStartInfo.ArgumentList.Add(arg);
-            }
         }
         else
         {
             // Fallback to cmd with ArgumentList for proper escaping
             processStartInfo.FileName = "cmd.exe";
             processStartInfo.ArgumentList.Add("/k");
-            processStartInfo.ArgumentList.Add($"{command} {arguments}");
+            processStartInfo.ArgumentList.Add(command);
+        }
+
+        // Add each argument separately by splitting on spaces (handling quoted paths)
+        var argParts = SplitArguments(arguments);
+        foreach (var arg in argParts)
+        {
+            processStartInfo.ArgumentList.Add(arg);
         }
 
         return processStartInfo;
-    }
-
-    /// <summary>
-    /// Splits command arguments while respecting quoted strings
-    /// </summary>
-    /// <param name="arguments">The arguments string to split</param>
-    /// <returns>Array of individual arguments</returns>
-    private static string[] SplitArguments(string arguments)
-    {
-        var result = new List<string>();
-        var current = new System.Text.StringBuilder();
-        bool inQuotes = false;
-
-        for (int i = 0; i < arguments.Length; i++)
-        {
-            char c = arguments[i];
-
-            if (c == '"')
-            {
-                inQuotes = !inQuotes;
-                current.Append(c);
-            }
-            else if (c == ' ' && !inQuotes)
-            {
-                if (current.Length > 0)
-                {
-                    result.Add(current.ToString());
-                    current.Clear();
-                }
-            }
-            else
-            {
-                current.Append(c);
-            }
-        }
-
-        if (current.Length > 0)
-        {
-            result.Add(current.ToString());
-        }
-
-        return result.ToArray();
     }
 
     /// <summary>
@@ -224,9 +178,59 @@ public class ProcessService : IProcessService
         else
         {
             processStartInfo.ArgumentList.Add("-e");
-            processStartInfo.ArgumentList.Add($"{command} {arguments}");
+            processStartInfo.ArgumentList.Add(command);
+        }
+
+        // Add each argument separately by splitting on spaces (handling quoted paths)
+        var argParts = SplitArguments(arguments);
+        foreach (var arg in argParts)
+        {
+            processStartInfo.ArgumentList.Add(arg);
         }
 
         return processStartInfo;
     }
+
+    /// <summary>
+    /// Splits command arguments while respecting quoted strings
+    /// </summary>
+    /// <param name="arguments">The arguments string to split</param>
+    /// <returns>Array of individual arguments</returns>
+    private static string[] SplitArguments(string arguments)
+    {
+        var result = new List<string>();
+        var current = new System.Text.StringBuilder();
+        bool inQuotes = false;
+
+        for (int i = 0; i < arguments.Length; i++)
+        {
+            char c = arguments[i];
+
+            if (c == '"')
+            {
+                inQuotes = !inQuotes;
+                current.Append(c);
+            }
+            else if (c == ' ' && !inQuotes)
+            {
+                if (current.Length > 0)
+                {
+                    result.Add(current.ToString());
+                    current.Clear();
+                }
+            }
+            else
+            {
+                current.Append(c);
+            }
+        }
+
+        if (current.Length > 0)
+        {
+            result.Add(current.ToString());
+        }
+
+        return result.ToArray();
+    }
+
 }
