@@ -6,9 +6,9 @@
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $projectPath = Join-Path $repoRoot 'src\Microsoft.Agents.A365.DevTools.Cli\Microsoft.Agents.A365.DevTools.Cli.csproj'
 
-# Verify project file exists
+# Verify the project file exists
 if (-not (Test-Path $projectPath)) {
-    Write-Error "ERROR: CLI project file not found at $projectPath"
+    Write-Error "ERROR: Project file not found at $projectPath"
     exit 1
 }
 
@@ -57,8 +57,6 @@ if ($LASTEXITCODE -ne 0) {
     Write-Error "ERROR: dotnet pack failed. Check output above for details."
     exit 1
 }
-
-
 
 # Find the generated .nupkg
 $nupkg = Get-ChildItem -Path $outputDir -Filter 'Microsoft.Agents.A365.DevTools.Cli*.nupkg' | Select-Object -First 1
@@ -112,8 +110,6 @@ if ($LASTEXITCODE -ne 0) {
     Write-Error "ERROR: CLI installation failed. Check output above for details."
     exit 1
 }
-
-
 
 Write-Host "Agent 365 CLI installed successfully." -ForegroundColor Green
 Write-Host ""

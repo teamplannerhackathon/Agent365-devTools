@@ -23,9 +23,9 @@ Get-ChildItem -Path $outputDir -Filter 'Microsoft.Agents.A365.DevTools.MockTooli
 
 # Clear NuGet package cache to avoid version conflicts
 Write-Host "Clearing MockToolingServer NuGet package cache..."
-Remove-Item ~/.nuget/packages/microsoft.agents.a365.devtools.mocktoolingserver -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item (Join-Path $HOME '.nuget' 'packages' 'microsoft.agents.a365.devtools.mocktoolingserver') -Recurse -Force -ErrorAction SilentlyContinue
 # Also clear the dotnet tools cache
-Remove-Item ~/.dotnet/toolResolverCache -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item (Join-Path $HOME '.dotnet' 'toolResolverCache') -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host "Package cache cleared"
 
 # Force clean MockToolingServer by removing bin/obj folders

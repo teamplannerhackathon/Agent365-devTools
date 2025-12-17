@@ -227,8 +227,8 @@ public class ProcessService : IProcessService
             else if (c == '"')
             {
                 // Only toggle quotes if this is not an escaped quote
+                // Don't append the quote character itself since ProcessStartInfo.ArgumentList handles escaping
                 inQuotes = !inQuotes;
-                current.Append(c);
             }
             else if (c == ' ' && !inQuotes)
             {
