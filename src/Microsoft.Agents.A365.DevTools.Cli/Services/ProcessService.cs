@@ -113,7 +113,9 @@ public class ProcessService : IProcessService
 
         // Use ArgumentList for proper escaping of AppleScript command
         processStartInfo.ArgumentList.Add("-e");
-        processStartInfo.ArgumentList.Add($"tell application \"Terminal\" to do script \"{command} {arguments}\"");
+        var escapedCommand = EscapeAppleScriptString(command);
+        var escapedArguments = EscapeAppleScriptString(arguments);
+        processStartInfo.ArgumentList.Add($"tell application \"Terminal\" to do script \"{escapedCommand} {escapedArguments}\"");
 
         return processStartInfo;
     }
@@ -231,6 +233,24 @@ public class ProcessService : IProcessService
         }
 
         return result.ToArray();
+    }
+
+    /// <summary>
+    /// Escapes a string for safe use within AppleScript double-quoted strings
+    /// </summary>
+    /// <param name="input">The string to escape</param>
+    /// <returns>The escaped string safe for AppleScript</returns>
+    private static string EscapeAppleScriptString(string input)
+    {
+        if (string.IsNullOrEmpty(input))
+            return input;
+
+        return input
+            .Replace("\\", "\\\\")  // Escape backslashes first
+            .Replace("\"", "\\\"")  // Escape double quotes
+            .Replace("\n", "\\n")   // Escape newlines
+            .Replace("\r", "\\r")   // Escape carriage returns
+            .Replace("\t", "\\t");  // Escape tabs
     }
 
 }
