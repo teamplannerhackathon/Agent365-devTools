@@ -25,7 +25,7 @@ public class MockToolingServerSubcommandTests : IDisposable
         _mockProcessService = Substitute.For<IProcessService>();
 
         var mockExecutorLogger = Substitute.For<ILogger<CommandExecutor>>();
-        _mockCommandExecutor = Substitute.ForPartsOf<CommandExecutor>(mockExecutorLogger);
+        _mockCommandExecutor = Substitute.For<CommandExecutor>(mockExecutorLogger);
 
         // ALWAYS configure CommandExecutor to return mock result to prevent accidental server startup
         var defaultMockResult = new Microsoft.Agents.A365.DevTools.Cli.Services.CommandResult
@@ -45,12 +45,12 @@ public class MockToolingServerSubcommandTests : IDisposable
 
         // Return that the tool is installed by default
         _mockCommandExecutor.ExecuteAsync(
-            Arg.Is<string>(cmd => cmd.StartsWith("dotnet tool list --global")),
-            Arg.Any<string>())
+            Arg.Is<string>(cmd => cmd == "dotnet"),
+            Arg.Is<string>(args => args == "tool list --global"))
             .Returns(Task.FromResult(new Microsoft.Agents.A365.DevTools.Cli.Services.CommandResult
             {
                 ExitCode = 0,
-                StandardOutput = "Microsoft.Agents.A365.DevTools.MockToolingServer",
+                StandardOutput = "a365-mock-tooling-server",
                 StandardError = ""
             }));
 
