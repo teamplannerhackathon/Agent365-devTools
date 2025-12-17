@@ -108,7 +108,7 @@ public class MockToolingServerSubcommandTests : IDisposable
         // Arrange
         var command = MockToolingServerSubcommand.CreateCommand(_mockLogger, _mockCommandExecutor, _mockProcessService);
 
-        // Act & Assert - Just verify the command can be created and doesn't throw during basic operations
+        // Act & Assert
         Assert.NotNull(command);
         Assert.NotNull(command.Handler);
     }
@@ -118,18 +118,18 @@ public class MockToolingServerSubcommandTests : IDisposable
     [InlineData(-1)]
     [InlineData(65536)]
     [InlineData(100000)]
-    public void ParseCommand_WithInvalidPort_ParsesWithoutError(int invalidPort)
+    public void ParseCommand_WithOutOfRangePort_AllowsParsingValidationOccursLater(int outOfRangePort)
     {
         // Arrange
         var command = MockToolingServerSubcommand.CreateCommand(_mockLogger, _mockCommandExecutor, _mockProcessService);
 
         // Act
-        var parseResult = command.Parse($"--port {invalidPort}");
+        var parseResult = command.Parse($"--port {outOfRangePort}");
 
-        // Assert
+        // Assert - Parsing should succeed; port validation happens in HandleStartServer method
         Assert.Empty(parseResult.Errors);
         var portValue = parseResult.GetValueForOption(command.Options.First());
-        Assert.Equal(invalidPort, portValue);
+        Assert.Equal(outOfRangePort, portValue);
     }
 
     [Theory]
