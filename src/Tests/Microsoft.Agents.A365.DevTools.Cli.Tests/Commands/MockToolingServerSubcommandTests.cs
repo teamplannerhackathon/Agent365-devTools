@@ -153,7 +153,7 @@ public class MockToolingServerSubcommandTests : IDisposable
 
         // Assert - Parsing should succeed; port validation happens in HandleStartServer method
         Assert.Empty(parseResult.Errors);
-        var portValue = parseResult.GetValueForOption(command.Options.First());
+        var portValue = parseResult.GetValueForOption(command.Options.First(o => o.Name == "port"));
         Assert.Equal(outOfRangePort, portValue);
     }
 
@@ -172,7 +172,7 @@ public class MockToolingServerSubcommandTests : IDisposable
 
         // Assert
         Assert.Empty(parseResult.Errors);
-        var portValue = parseResult.GetValueForOption(command.Options.First());
+        var portValue = parseResult.GetValueForOption(command.Options.First(o => o.Name == "port"));
         Assert.Equal(validPort, portValue);
     }
 
@@ -187,7 +187,7 @@ public class MockToolingServerSubcommandTests : IDisposable
 
         // Assert
         Assert.Empty(parseResult.Errors);
-        var portValue = parseResult.GetValueForOption(command.Options.First());
+        var portValue = parseResult.GetValueForOption(command.Options.First(o => o.Name == "port"));
         Assert.Null(portValue); // Default value is handled in the handler, not the option
     }
 
