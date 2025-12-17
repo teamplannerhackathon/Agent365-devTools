@@ -208,13 +208,31 @@ public class ProcessService : IProcessService
         {
             char c = arguments[i];
 
-            if (c == '"')
+            // Handle escape sequences
+            if (c == '\\' && i + 1 < arguments.Length)
             {
+                char nextChar = arguments[i + 1];
+                // Check if this is an escaped quote
+                if (nextChar == '"')
+                {
+                    // Add the escaped quote without toggling inQuotes
+                    current.Append('\\');
+                    current.Append('"');
+                    i++; // Skip the next character since we've processed it
+                    continue;
+                }
+                // For other escape sequences, add the backslash and let normal processing handle the next character
+                current.Append(c);
+            }
+            else if (c == '"')
+            {
+                // Only toggle quotes if this is not an escaped quote
                 inQuotes = !inQuotes;
                 current.Append(c);
             }
             else if (c == ' ' && !inQuotes)
             {
+                // Split on space only when not inside quotes
                 if (current.Length > 0)
                 {
                     result.Add(current.ToString());

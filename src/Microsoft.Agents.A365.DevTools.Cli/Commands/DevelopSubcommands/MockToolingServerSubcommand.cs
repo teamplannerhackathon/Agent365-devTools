@@ -106,7 +106,7 @@ internal static class MockToolingServerSubcommand
             if (!await IsToolInstalled(logger, commandExecutor, verbose))
             {
                 logger.LogError("MockToolingServer tool not found. Please install it first:");
-                logger.LogError("Run the install-cli.ps1 script or manually install with:");
+                logger.LogError("Run the install-mts.ps1 script or manually install with:");
                 logger.LogError("dotnet tool install --global Microsoft.Agents.A365.DevTools.MockToolingServer");
                 return;
             }
