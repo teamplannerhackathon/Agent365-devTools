@@ -72,7 +72,7 @@ class Program
             var graphApiService = serviceProvider.GetRequiredService<GraphApiService>();
             var webAppCreator = serviceProvider.GetRequiredService<AzureWebAppCreator>();
             var platformDetector = serviceProvider.GetRequiredService<PlatformDetector>();
-            var processService = serviceProvider.GetRequiredService<ProcessService>();
+            var processService = serviceProvider.GetRequiredService<IProcessService>();
 
             // Add commands
             rootCommand.AddCommand(DevelopCommand.CreateCommand(developLogger, configService, executor, authService, graphApiService, processService));
@@ -210,7 +210,7 @@ class Program
         services.AddSingleton<AzureWebAppCreator>();
 
         // Register ProcessService for cross-platform process launching
-        services.AddSingleton<ProcessService>();
+        services.AddSingleton<IProcessService, ProcessService>();
 
         // Register Azure CLI service and Configuration Wizard
         services.AddSingleton<IAzureCliService, AzureCliService>();

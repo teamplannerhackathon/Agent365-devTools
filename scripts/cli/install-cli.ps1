@@ -118,7 +118,6 @@ $installedVersion = dotnet tool list -g | Select-String "microsoft.agents.a365.d
 if ($installedVersion) {
     Write-Host "Installed: $installedVersion" -ForegroundColor Cyan
     Write-Host ""
-    Write-Host "To install MockToolingServer separately, run: .\scripts\cli\install-mts.ps1" -ForegroundColor Green
     Write-Host "IMPORTANT: If you have the CLI running in another terminal, close it and reopen to pick up the new version." -ForegroundColor Yellow
 } else {
     Write-Warning "Could not verify installation. Try running 'a365 --help' to test."
