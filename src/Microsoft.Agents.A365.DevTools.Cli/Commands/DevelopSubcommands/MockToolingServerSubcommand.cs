@@ -115,7 +115,7 @@ internal static class MockToolingServerSubcommand
                 var args = new[] { "--urls", $"http://localhost:{serverPort}" };
 
                 // This will run in foreground and block the current terminal until the server is stopped
-                await MockToolingServer.Server.Start(args);
+                await Server.Start(args);
                 return;
             }
 
