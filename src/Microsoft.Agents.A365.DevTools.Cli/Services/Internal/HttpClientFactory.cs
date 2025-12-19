@@ -25,7 +25,6 @@ public static class HttpClientFactory
 
         // Set a custom User-Agent header
         var effectivePrefix = string.IsNullOrWhiteSpace(userAgentPrefix) ? DefaultUserAgentPrefix : userAgentPrefix;
-        client.DefaultRequestHeaders.UserAgent.Clear();
         client.DefaultRequestHeaders.UserAgent.ParseAdd($"{effectivePrefix}/{Assembly.GetExecutingAssembly().GetName().Version}");
 
         return client;
