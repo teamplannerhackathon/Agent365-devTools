@@ -17,6 +17,7 @@ internal static class MockToolingServerSubcommand
     /// </summary>
     /// <param name="logger">Logger for progress reporting</param>
     /// <param name="processService">Process service for starting processes</param>
+    /// <param name="serverService">Server service for managing the server</param>
     /// <returns>
     /// A <see cref="Command"/> object representing the 'start-mock-tooling-server'
     /// subcommand, used to start the Mock Tooling Server for local development and testing.

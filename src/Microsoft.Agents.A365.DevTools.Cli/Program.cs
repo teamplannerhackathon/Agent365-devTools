@@ -215,7 +215,7 @@ class Program
         // Register ProcessService for cross-platform process launching
         services.AddSingleton<IProcessService, ProcessService>();
 
-        // Register ServerService for starting Mock Tooling Server
+        // Register ServerService for starting servers
         services.AddSingleton<IServerService, ServerService>();
 
         // Register Azure CLI service and Configuration Wizard
