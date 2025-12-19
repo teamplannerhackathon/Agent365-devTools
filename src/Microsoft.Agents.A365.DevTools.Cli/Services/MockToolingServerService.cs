@@ -6,9 +6,9 @@ namespace Microsoft.Agents.A365.DevTools.Cli.Services;
 using Microsoft.Agents.A365.DevTools.MockToolingServer;
 
 /// <summary>
-/// Default implementation of IServerService
+/// An IServerService implementation for running the MockToolingServer
 /// </summary>
-public class ServerService : IServerService
+public class MockToolingServerService : IServerService
 {
     /// <inheritdoc/>
     public async Task StartAsync(string[] args)

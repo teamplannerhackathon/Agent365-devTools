@@ -216,7 +216,7 @@ class Program
         services.AddSingleton<IProcessService, ProcessService>();
 
         // Register ServerService for starting servers
-        services.AddSingleton<IServerService, ServerService>();
+        services.AddSingleton<IServerService, MockToolingServerService>();
 
         // Register Azure CLI service and Configuration Wizard
         services.AddSingleton<IAzureCliService, AzureCliService>();
