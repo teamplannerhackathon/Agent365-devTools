@@ -261,8 +261,16 @@ public class MockToolingServerSubcommandTests : IDisposable
     [Fact]
     public async Task HandleStartServer_WithNullPort_UsesDefaultPort()
     {
-        // Act - Default behavior is foreground (background=false)
-        await MockToolingServerSubcommand.HandleStartServer(null, false, false, false, _testLogger, _mockProcessService, _mockServerService);
+        // Act - Start task but don't await (will be cancelled by timeout)
+        // We're testing the initial log messages before Server.Start() blocks
+        var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
+        var task = Task.Run(async () =>
+        {
+            await MockToolingServerSubcommand.HandleStartServer(null, false, false, false, _testLogger, _mockProcessService, _mockServerService);
+        }, cts.Token);
+
+        // Wait briefly for initial logging to occur
+        await Task.Delay(100);
 
         // Assert - Should log foreground startup messages with default port
         Assert.NotEmpty(_testLogger.LogCalls);
@@ -282,8 +290,16 @@ public class MockToolingServerSubcommandTests : IDisposable
     [InlineData(65535)]
     public async Task HandleStartServer_WithValidPort_LogsStartingMessage(int validPort)
     {
-        // Act - Default behavior is foreground (background=false)
-        await MockToolingServerSubcommand.HandleStartServer(validPort, false, false, false, _testLogger, _mockProcessService, _mockServerService);
+        // Act - Start task but don't await (will be cancelled by timeout)
+        // We're testing the initial log messages before Server.Start() blocks
+        var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
+        var task = Task.Run(async () =>
+        {
+            await MockToolingServerSubcommand.HandleStartServer(validPort, false, false, false, _testLogger, _mockProcessService, _mockServerService);
+        }, cts.Token);
+
+        // Wait briefly for initial logging to occur
+        await Task.Delay(100);
 
         // Assert - Should log foreground startup messages
         Assert.NotEmpty(_testLogger.LogCalls);
