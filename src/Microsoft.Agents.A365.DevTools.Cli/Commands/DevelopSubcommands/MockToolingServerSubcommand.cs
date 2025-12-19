@@ -4,7 +4,6 @@
 using Microsoft.Agents.A365.DevTools.Cli.Services;
 using Microsoft.Extensions.Logging;
 using System.CommandLine;
-using Microsoft.Agents.A365.DevTools.MockToolingServer;
 
 namespace Microsoft.Agents.A365.DevTools.Cli.Commands.DevelopSubcommands;
 
@@ -18,13 +17,15 @@ internal static class MockToolingServerSubcommand
     /// </summary>
     /// <param name="logger">Logger for progress reporting</param>
     /// <param name="processService">Process service for starting processes</param>
+    /// <param name="serverService">Server service for managing the server</param>
     /// <returns>
     /// A <see cref="Command"/> object representing the 'start-mock-tooling-server'
     /// subcommand, used to start the Mock Tooling Server for local development and testing.
     /// </returns>
     public static Command CreateCommand(
         ILogger logger,
-        IProcessService processService)
+        IProcessService processService,
+        IServerService serverService)
     {
         var command = new Command("start-mock-tooling-server", "Start the Mock Tooling Server for local development and testing");
         command.AddAlias("mts");
@@ -54,7 +55,7 @@ internal static class MockToolingServerSubcommand
         command.AddOption(backgroundOption);
 
         command.SetHandler(async (port, verbose, dryRun, background) => {
-            await HandleStartServer(port, verbose, dryRun, background, logger, processService);
+            await HandleStartServer(port, verbose, dryRun, background, logger, processService, serverService);
         }, portOption, verboseOption, dryRunOption, backgroundOption);
 
         return command;
@@ -69,7 +70,15 @@ internal static class MockToolingServerSubcommand
     /// <param name="background">Run the server in the background (opens new terminal to run server)</param>
     /// <param name="logger">Logger for progress reporting</param>
     /// <param name="processService">Process service for starting processes</param>
-    public static async Task HandleStartServer(int? port, bool verbose, bool dryRun, bool background, ILogger logger, IProcessService processService)
+    /// <param name="serverService">Server service for managing the server</param>
+    public static async Task HandleStartServer(
+        int? port,
+        bool verbose,
+        bool dryRun,
+        bool background,
+        ILogger logger,
+        IProcessService processService,
+        IServerService serverService)
     {
         var serverPort = port ?? 5309;
         if (serverPort < 1 || serverPort > 65535)
@@ -114,7 +123,7 @@ internal static class MockToolingServerSubcommand
                 new[] { "--urls", $"http://localhost:{serverPort}" };
 
                 // This will run in foreground and block the current terminal until the server is stopped
-                await Server.Start(args);
+                await serverService.StartAsync(args);
                 return;
             }
 
