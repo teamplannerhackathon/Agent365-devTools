@@ -730,18 +730,11 @@ public class GraphApiService
 
     private async Task<bool> EnsureGraphHeadersAsync(string tenantId, CancellationToken ct = default, IEnumerable<string>? scopes = null)
     {
-        string? token;
-        
-        if (scopes != null && _tokenProvider != null)
-        {
-            // When specific scopes are required, use custom client app if configured
-            // CustomClientAppId should be set by callers who have access to config
-            token = await _tokenProvider.GetMgGraphAccessTokenAsync(tenantId, scopes, false, CustomClientAppId, ct);
-        }
-        else
-        {
-            token = await GetGraphAccessTokenAsync(tenantId, ct);
-        }
+        // When specific scopes are required, use custom client app if configured
+        // CustomClientAppId should be set by callers who have access to config
+        var token = (scopes != null && _tokenProvider != null)
+            ? await _tokenProvider.GetMgGraphAccessTokenAsync(tenantId, scopes, false, CustomClientAppId, ct)
+            : await GetGraphAccessTokenAsync(tenantId, ct);
         
         if (string.IsNullOrWhiteSpace(token)) return false;
 

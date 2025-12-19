@@ -101,6 +101,9 @@ public class BotConfigurator : IBotConfigurator
 
                 // Normalize location: Remove spaces and convert to lowercase (e.g., "Canada Central" -> "canadacentral")
                 // Azure APIs require the API-friendly location name format
+                // TODO: Consider using `az account list-locations` for robust display name → programmatic name mapping
+                // See: https://learn.microsoft.com/en-us/cli/azure/account?view=azure-cli-latest#az-account-list-locations
+                // Current approach works for existing regions but may need updates for new region naming patterns
                 var normalizedLocation = location.Replace(" ", "").ToLowerInvariant();
                 var createEndpointBody = new JsonObject
                 {
