@@ -18,6 +18,7 @@ public class CleanupCommandBotEndpointTests
     private readonly CommandExecutor _mockExecutor;
     private readonly GraphApiService _graphApiService;
     private readonly IMicrosoftGraphTokenProvider _mockTokenProvider;
+    private readonly IConfirmationProvider _mockConfirmationProvider;
 
     public CleanupCommandBotEndpointTests()
     {
@@ -60,6 +61,11 @@ public class CleanupCommandBotEndpointTests
         
         var mockGraphLogger = Substitute.For<ILogger<GraphApiService>>();
         _graphApiService = new GraphApiService(mockGraphLogger, _mockExecutor, null, _mockTokenProvider);
+
+        // Setup mock confirmation provider to return true by default
+        _mockConfirmationProvider = Substitute.For<IConfirmationProvider>();
+        _mockConfirmationProvider.ConfirmAsync(Arg.Any<string>()).Returns(true);
+        _mockConfirmationProvider.ConfirmWithTypedResponseAsync(Arg.Any<string>(), Arg.Any<string>()).Returns(true);
     }
 
     [Fact]
@@ -93,7 +99,8 @@ public class CleanupCommandBotEndpointTests
             _mockConfigService, 
             _mockBotConfigurator, 
             _mockExecutor, 
-            _graphApiService);
+            _graphApiService,
+            _mockConfirmationProvider);
 
         Assert.NotNull(command);
         Assert.Equal("cleanup", command.Name);

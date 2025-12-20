@@ -17,7 +17,8 @@ public class CleanupCommand
         IConfigService configService,
         IBotConfigurator botConfigurator,
         CommandExecutor executor,
-        GraphApiService graphApiService)
+        GraphApiService graphApiService,
+        IConfirmationProvider confirmationProvider)
     {
         var cleanupCommand = new Command("cleanup", "Clean up ALL resources (blueprint, instance, Azure) - use subcommands for granular cleanup");
 
@@ -39,7 +40,7 @@ public class CleanupCommand
         // Set default handler for 'a365 cleanup' (without subcommand) - cleans up everything
         cleanupCommand.SetHandler(async (configFile, verbose) =>
         {
-            await ExecuteAllCleanupAsync(logger, configService, botConfigurator, executor, graphApiService, configFile);
+            await ExecuteAllCleanupAsync(logger, configService, botConfigurator, executor, graphApiService, confirmationProvider, configFile);
         }, configOption, verboseOption);
 
         // Add subcommands for granular control
@@ -397,6 +398,7 @@ public class CleanupCommand
         IBotConfigurator botConfigurator,
         CommandExecutor executor,
         GraphApiService graphApiService,
+        IConfirmationProvider confirmationProvider,
         FileInfo? configFile)
     {
         var cleanupSucceeded = false;
@@ -435,17 +437,13 @@ public class CleanupCommand
             logger.LogInformation("    Generated configuration file");
             logger.LogInformation("");
 
-            Console.Write("Are you sure you want to DELETE ALL resources? (y/N): ");
-            var response = Console.ReadLine()?.Trim().ToLowerInvariant();
-            if (response != "y" && response != "yes")
+            if (!await confirmationProvider.ConfirmAsync("Are you sure you want to DELETE ALL resources? (y/N): "))
             {
                 logger.LogInformation("Cleanup cancelled by user");
                 return;
             }
             
-            Console.Write("Type 'DELETE' to confirm: ");
-            var confirmResponse = Console.ReadLine()?.Trim();
-            if (confirmResponse != "DELETE")
+            if (!await confirmationProvider.ConfirmWithTypedResponseAsync("Type 'DELETE' to confirm: ", "DELETE"))
             {
                 logger.LogInformation("Cleanup cancelled - confirmation not received");
                 return;

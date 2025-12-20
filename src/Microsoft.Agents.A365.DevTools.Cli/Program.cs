@@ -90,9 +90,10 @@ class Program
             var configLogger = configLoggerFactory.CreateLogger("ConfigCommand");
             var wizardService = serviceProvider.GetRequiredService<IConfigurationWizardService>();
             var manifestTemplateService = serviceProvider.GetRequiredService<ManifestTemplateService>();
+            var confirmationProvider = serviceProvider.GetRequiredService<IConfirmationProvider>();
             rootCommand.AddCommand(ConfigCommand.CreateCommand(configLogger, wizardService: wizardService, clientAppValidator: clientAppValidator));
             rootCommand.AddCommand(QueryEntraCommand.CreateCommand(queryEntraLogger, configService, executor, graphApiService));
-            rootCommand.AddCommand(CleanupCommand.CreateCommand(cleanupLogger, configService, botConfigurator, executor, graphApiService));
+            rootCommand.AddCommand(CleanupCommand.CreateCommand(cleanupLogger, configService, botConfigurator, executor, graphApiService, confirmationProvider));
             rootCommand.AddCommand(PublishCommand.CreateCommand(publishLogger, configService, graphApiService, manifestTemplateService));
 
             // Wrap all command handlers with exception handling
@@ -217,6 +218,9 @@ class Program
         // Register Azure CLI service and Configuration Wizard
         services.AddSingleton<IAzureCliService, AzureCliService>();
         services.AddSingleton<IConfigurationWizardService, ConfigurationWizardService>();
+        
+        // Register confirmation provider for user prompts
+        services.AddSingleton<IConfirmationProvider, ConsoleConfirmationProvider>();
     }
 
     public static string GetDisplayVersion()
