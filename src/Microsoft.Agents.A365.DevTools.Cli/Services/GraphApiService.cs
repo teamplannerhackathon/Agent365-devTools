@@ -194,35 +194,21 @@ public class GraphApiService
     {
         try
         {
-            _logger.LogInformation("=== PUBLISH GRAPH STEPS START ===");
-            _logger.LogInformation("TenantId: {TenantId}", tenantId);
-            _logger.LogInformation("BlueprintId: {BlueprintId}", blueprintId);
-            _logger.LogInformation("ManifestId: {ManifestId}", manifestId);
-
-            // Get Graph access token
-            var graphToken = await GetGraphAccessTokenAsync(tenantId, cancellationToken);
-            if (string.IsNullOrWhiteSpace(graphToken))
-            {
-                _logger.LogError("Failed to acquire Graph API access token");
-                return false;
-            }
-
-            _httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", graphToken);
-            // NOTE: Do NOT add "ConsistencyLevel: eventual" header here.
-            // This header is only required for advanced Graph query capabilities ($count, $search, certain $filter operations).
-            // For simple service principal lookups using basic $filter, this header is not needed and causes HTTP 400 errors.
-            // See: https://learn.microsoft.com/en-us/graph/aad-advanced-queries
+            _logger.LogInformation("Configuring agent blueprint for runtime authentication...");
+            _logger.LogDebug("TenantId: {TenantId}", tenantId);
+            _logger.LogDebug("BlueprintId: {BlueprintId}", blueprintId);
+            _logger.LogDebug("ManifestId: {ManifestId}", manifestId);
 
             // Step 1: Derive federated identity subject using FMI ID logic
-            _logger.LogInformation("[STEP 1] Deriving federated identity subject (FMI ID)...");
+            _logger.LogDebug("[STEP 1] Deriving federated identity subject (FMI ID)...");
             
             // MOS3 App ID - well-known identifier for MOS (Microsoft Online Services)
             const string mos3AppId = "e8be65d6-d430-4289-a665-51bf2a194bda";
             var subjectValue = ConstructFmiId(tenantId, mos3AppId, manifestId);
-            _logger.LogInformation("Subject value (FMI ID): {Subject}", subjectValue);
+            _logger.LogDebug("Subject value (FMI ID): {Subject}", subjectValue);
 
             // Step 2: Create federated identity credential
-            _logger.LogInformation("[STEP 2] Creating federated identity credential...");
+            _logger.LogInformation("Configuring workload identity authentication for agent runtime...");
             await CreateFederatedIdentityCredentialAsync(
                 blueprintId, 
                 subjectValue, 
@@ -231,8 +217,8 @@ public class GraphApiService
                 cancellationToken);
 
             // Step 3: Lookup Service Principal
-            _logger.LogInformation("[STEP 3] Looking up service principal for blueprint {BlueprintId}...", blueprintId);
-            var spObjectId = await LookupServicePrincipalAsync(blueprintId, cancellationToken);
+            _logger.LogDebug("[STEP 3] Looking up service principal for blueprint {BlueprintId}...", blueprintId);
+            var spObjectId = await LookupServicePrincipalAsync(tenantId, blueprintId, cancellationToken);
             if (string.IsNullOrWhiteSpace(spObjectId))
             {
                 _logger.LogError("Failed to lookup service principal for blueprint {BlueprintId}", blueprintId);
@@ -241,24 +227,24 @@ public class GraphApiService
                 return false;
             }
 
-            _logger.LogInformation("Service principal objectId: {ObjectId}", spObjectId);
+            _logger.LogDebug("Service principal objectId: {ObjectId}", spObjectId);
 
             // Step 4: Lookup Microsoft Graph Service Principal
-            _logger.LogInformation("[STEP 4] Looking up Microsoft Graph service principal...");
-            var msGraphResourceId = await LookupMicrosoftGraphServicePrincipalAsync(cancellationToken);
+            _logger.LogDebug("[STEP 4] Looking up Microsoft Graph service principal...");
+            var msGraphResourceId = await LookupMicrosoftGraphServicePrincipalAsync(tenantId, cancellationToken);
             if (string.IsNullOrWhiteSpace(msGraphResourceId))
             {
                 _logger.LogError("Failed to lookup Microsoft Graph service principal");
                 return false;
             }
 
-            _logger.LogInformation("Microsoft Graph service principal objectId: {ObjectId}", msGraphResourceId);
+            _logger.LogDebug("Microsoft Graph service principal objectId: {ObjectId}", msGraphResourceId);
 
             // Step 5: Assign app role (optional for agent applications)
-            _logger.LogInformation("[STEP 5] Assigning app role...");
-            await AssignAppRoleAsync(spObjectId, msGraphResourceId, cancellationToken);
+            _logger.LogInformation("Granting Microsoft Graph permissions to agent blueprint...");
+            await AssignAppRoleAsync(tenantId, spObjectId, msGraphResourceId, cancellationToken);
 
-            _logger.LogInformation("=== PUBLISH GRAPH STEPS COMPLETED SUCCESSFULLY ===");
+            _logger.LogInformation("Agent blueprint configuration completed successfully");
             return true;
         }
         catch (Exception ex)
@@ -339,25 +325,18 @@ public class GraphApiService
             var ficName = $"fic-{manifestId}";
 
             // Check if FIC already exists
-            var existingUrl = $"https://graph.microsoft.com/beta/applications/{blueprintId}/federatedIdentityCredentials";
-            var existingResponse = await _httpClient.GetAsync(existingUrl, cancellationToken);
+            var existing = await GraphGetAsync(tenantId, $"/beta/applications/{blueprintId}/federatedIdentityCredentials", cancellationToken);
 
-            if (existingResponse.IsSuccessStatusCode)
+            if (existing != null && existing.RootElement.TryGetProperty("value", out var fics))
             {
-                var existingJson = await existingResponse.Content.ReadAsStringAsync(cancellationToken);
-                var existing = System.Text.Json.JsonDocument.Parse(existingJson);
-
-                if (existing.RootElement.TryGetProperty("value", out var fics))
+                foreach (var fic in fics.EnumerateArray())
                 {
-                    foreach (var fic in fics.EnumerateArray())
+                    if (fic.TryGetProperty("subject", out var subject) && 
+                        subject.GetString() == subjectValue)
                     {
-                        if (fic.TryGetProperty("subject", out var subject) && 
-                            subject.GetString() == subjectValue)
-                        {
-                            var name = fic.TryGetProperty("name", out var n) ? n.GetString() : "unknown";
-                            _logger.LogInformation("Federated identity credential already exists: {Name}", name);
-                            return;
-                        }
+                        var name = fic.TryGetProperty("name", out var n) ? n.GetString() : "unknown";
+                        _logger.LogInformation("Workload identity authentication already configured");
+                        return;
                     }
                 }
             }
@@ -371,22 +350,15 @@ public class GraphApiService
                 audiences = new[] { "api://AzureADTokenExchange" }
             };
 
-            var createUrl = $"https://graph.microsoft.com/beta/applications/{blueprintId}/federatedIdentityCredentials";
-            var content = new StringContent(
-                System.Text.Json.JsonSerializer.Serialize(payload),
-                System.Text.Encoding.UTF8,
-                "application/json");
+            var created = await GraphPostAsync(tenantId, $"/beta/applications/{blueprintId}/federatedIdentityCredentials", payload, cancellationToken);
 
-            var response = await _httpClient.PostAsync(createUrl, content, cancellationToken);
-
-            if (!response.IsSuccessStatusCode)
+            if (created == null)
             {
-                var error = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogDebug("Failed to create FIC (expected in some scenarios): {Error}", error);
+                _logger.LogDebug("Failed to create FIC (expected in some scenarios)");
                 return;
             }
 
-            _logger.LogInformation("Federated identity credential created: {Name}", ficName);
+            _logger.LogInformation("Workload identity authentication configured successfully");
         }
         catch (Exception ex)
         {
@@ -395,26 +367,20 @@ public class GraphApiService
     }
 
     private async Task<string?> LookupServicePrincipalAsync(
+        string tenantId,
         string blueprintId,
         CancellationToken cancellationToken)
     {
         try
         {
             _logger.LogDebug("Looking up service principal for blueprint appId: {BlueprintId}", blueprintId);
-            var url = $"https://graph.microsoft.com/v1.0/servicePrincipals?$filter=appId eq '{blueprintId}'";
-            _logger.LogDebug("Service principal lookup URL: {Url}", url);
-            var response = await _httpClient.GetAsync(url, cancellationToken);
+            var doc = await GraphGetAsync(tenantId, $"/v1.0/servicePrincipals?$filter=appId eq '{blueprintId}'", cancellationToken);
 
-            if (!response.IsSuccessStatusCode)
+            if (doc == null)
             {
-                var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogError("Failed to lookup service principal for blueprint {BlueprintId}. HTTP {StatusCode}: {ErrorBody}", 
-                    blueprintId, (int)response.StatusCode, errorBody);
+                _logger.LogError("Failed to lookup service principal for blueprint {BlueprintId}. Graph API request failed.", blueprintId);
                 return null;
             }
-
-            var json = await response.Content.ReadAsStringAsync(cancellationToken);
-            var doc = System.Text.Json.JsonDocument.Parse(json);
 
             if (doc.RootElement.TryGetProperty("value", out var value) && value.GetArrayLength() > 0)
             {
@@ -427,8 +393,7 @@ public class GraphApiService
                 }
             }
 
-            _logger.LogWarning("No service principal found for blueprint appId {BlueprintId}. The blueprint's service principal must be created before publish. Response: {Json}", 
-                blueprintId, json);
+            _logger.LogWarning("No service principal found for blueprint appId {BlueprintId}. The blueprint's service principal must be created before publish.", blueprintId);
             return null;
         }
         catch (Exception ex)
@@ -439,22 +404,19 @@ public class GraphApiService
     }
 
     private async Task<string?> LookupMicrosoftGraphServicePrincipalAsync(
+        string tenantId,
         CancellationToken cancellationToken)
     {
         try
         {
             string msGraphAppId = AuthenticationConstants.MicrosoftGraphResourceAppId;
-            var url = $"https://graph.microsoft.com/v1.0/servicePrincipals?$filter=appId eq '{msGraphAppId}'&$select=id,appId,displayName";
-            var response = await _httpClient.GetAsync(url, cancellationToken);
+            var doc = await GraphGetAsync(tenantId, $"/v1.0/servicePrincipals?$filter=appId eq '{msGraphAppId}'&$select=id,appId,displayName", cancellationToken);
 
-            if (!response.IsSuccessStatusCode)
+            if (doc == null)
             {
                 _logger.LogError("Failed to lookup Microsoft Graph service principal");
                 return null;
             }
-
-            var json = await response.Content.ReadAsStringAsync(cancellationToken);
-            var doc = System.Text.Json.JsonDocument.Parse(json);
 
             if (doc.RootElement.TryGetProperty("value", out var value) && value.GetArrayLength() > 0)
             {
@@ -475,6 +437,7 @@ public class GraphApiService
     }
 
     private async Task AssignAppRoleAsync(
+        string tenantId,
         string spObjectId,
         string msGraphResourceId,
         CancellationToken cancellationToken)
@@ -485,26 +448,19 @@ public class GraphApiService
             const string appRoleId = "4aa6e624-eee0-40ab-bdd8-f9639038a614";
 
             // Check if role assignment already exists
-            var existingUrl = $"https://graph.microsoft.com/v1.0/servicePrincipals/{spObjectId}/appRoleAssignments";
-            var existingResponse = await _httpClient.GetAsync(existingUrl, cancellationToken);
+            var existing = await GraphGetAsync(tenantId, $"/v1.0/servicePrincipals/{spObjectId}/appRoleAssignments", cancellationToken);
 
-            if (existingResponse.IsSuccessStatusCode)
+            if (existing != null && existing.RootElement.TryGetProperty("value", out var assignments))
             {
-                var existingJson = await existingResponse.Content.ReadAsStringAsync(cancellationToken);
-                var existing = System.Text.Json.JsonDocument.Parse(existingJson);
-
-                if (existing.RootElement.TryGetProperty("value", out var assignments))
+                foreach (var assignment in assignments.EnumerateArray())
                 {
-                    foreach (var assignment in assignments.EnumerateArray())
-                    {
-                        var resourceId = assignment.TryGetProperty("resourceId", out var r) ? r.GetString() : null;
-                        var roleId = assignment.TryGetProperty("appRoleId", out var ar) ? ar.GetString() : null;
+                    var resourceId = assignment.TryGetProperty("resourceId", out var r) ? r.GetString() : null;
+                    var roleId = assignment.TryGetProperty("appRoleId", out var ar) ? ar.GetString() : null;
 
-                        if (resourceId == msGraphResourceId && roleId == appRoleId)
-                        {
-                            _logger.LogInformation("App role assignment already exists (idempotent check passed)");
-                            return;
-                        }
+                    if (resourceId == msGraphResourceId && roleId == appRoleId)
+                    {
+                        _logger.LogInformation("Microsoft Graph permissions already configured");
+                        return;
                     }
                 }
             }
@@ -517,34 +473,26 @@ public class GraphApiService
                 appRoleId = appRoleId
             };
 
-            var createUrl = $"https://graph.microsoft.com/v1.0/servicePrincipals/{spObjectId}/appRoleAssignments";
-            var content = new StringContent(
-                System.Text.Json.JsonSerializer.Serialize(payload),
-                System.Text.Encoding.UTF8,
-                "application/json");
+            var created = await GraphPostAsync(tenantId, $"/v1.0/servicePrincipals/{spObjectId}/appRoleAssignments", payload, cancellationToken);
 
-            var response = await _httpClient.PostAsync(createUrl, content, cancellationToken);
-
-            if (!response.IsSuccessStatusCode)
+            if (created == null)
             {
-                var error = await response.Content.ReadAsStringAsync(cancellationToken);
-
-                // Check if this is the known agent application limitation
-                if (error.Contains("Service principals of agent applications cannot be set as the source type", StringComparison.OrdinalIgnoreCase))
-                {
-                    _logger.LogWarning("App role assignment skipped: Agent applications have restrictions");
-                    _logger.LogInformation("Agent application permissions should be configured through admin consent URLs");
-                    return;
-                }
-
-                _logger.LogWarning("App role assignment failed (continuing anyway): {Error}", error);
+                _logger.LogWarning("Failed to grant Microsoft Graph permissions (continuing anyway)");
                 return;
             }
 
-            _logger.LogInformation("App role assignment succeeded");
+            _logger.LogInformation("Microsoft Graph permissions granted successfully");
         }
         catch (Exception ex)
         {
+            // Check if this is the known agent application limitation
+            if (ex.Message.Contains("Service principals of agent applications cannot be set as the source type", StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning("App role assignment skipped: Agent applications have restrictions");
+                _logger.LogInformation("Agent application permissions should be configured through admin consent URLs");
+                return;
+            }
+
             _logger.LogWarning(ex, "Exception assigning app role (continuing anyway)");
         }
     }
@@ -563,45 +511,22 @@ public class GraphApiService
     {
         try
         {
-            // Get access token for Microsoft Graph
-            var accessToken = await GetGraphAccessTokenAsync(tenantId, cancellationToken);
-            if (string.IsNullOrWhiteSpace(accessToken))
-            {
-                _logger.LogError("Failed to acquire Graph API access token");
-                return null;
-            }
-
-            // Set authorization header
-            _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-
             // Make the API call to get inheritable permissions
-            var url = $"https://graph.microsoft.com/beta/applications/microsoft.graph.agentIdentityBlueprint/{blueprintId}/inheritablePermissions";
-            _logger.LogInformation("Calling Graph API: {Url}", url);
+            var doc = await GraphGetAsync(tenantId, $"/beta/applications/microsoft.graph.agentIdentityBlueprint/{blueprintId}/inheritablePermissions", cancellationToken);
 
-            var response = await _httpClient.GetAsync(url, cancellationToken);
-
-            if (!response.IsSuccessStatusCode)
+            if (doc == null)
             {
-                var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogError("Graph API call failed. Status: {StatusCode}, Error: {Error}",
-                    response.StatusCode, errorContent);
+                _logger.LogError("Failed to retrieve inheritable permissions from Graph API");
                 return null;
             }
 
-            var jsonResponse = await response.Content.ReadAsStringAsync(cancellationToken);
             _logger.LogInformation("Successfully retrieved inheritable permissions from Graph API");
-
-            return jsonResponse;
+            return doc.RootElement.GetRawText();
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Exception calling inheritable permissions endpoint");
             return null;
-        }
-        finally
-        {
-            // Clear authorization header to avoid issues with other requests
-            _httpClient.DefaultRequestHeaders.Authorization = null;
         }
     }
 
