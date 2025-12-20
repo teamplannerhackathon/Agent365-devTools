@@ -60,7 +60,16 @@ public class GraphApiServiceTests
 
         var service = new GraphApiService(logger, executor, handler);
 
-        // Simulate GET returning empty list
+        // ResolveBlueprintObjectIdAsync: First GET to check if blueprintAppId is objectId (returns 404 NotFound)
+        handler.QueueResponse(new HttpResponseMessage(HttpStatusCode.NotFound));
+
+        // ResolveBlueprintObjectIdAsync: Second GET to resolve appId -> objectId
+        handler.QueueResponse(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(JsonSerializer.Serialize(new { value = new[] { new { id = "resolved-object-id" } } }))
+        });
+
+        // SetInheritablePermissionsAsync: GET existing permissions (returns empty list = not found)
         handler.QueueResponse(new HttpResponseMessage(HttpStatusCode.OK)
         {
             Content = new StringContent(JsonSerializer.Serialize(new { value = Array.Empty<object>() }))
@@ -124,6 +133,16 @@ public class GraphApiServiceTests
             }
         };
 
+        // ResolveBlueprintObjectIdAsync: Check if bpAppId is an objectId (returns 404 NotFound)
+        handler.QueueResponse(new HttpResponseMessage(HttpStatusCode.NotFound));
+
+        // ResolveBlueprintObjectIdAsync: Resolve appId to objectId
+        handler.QueueResponse(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(JsonSerializer.Serialize(new { value = new[] { new { id = "resolved-object-id" } } }))
+        });
+
+        // SetInheritablePermissionsAsync: GET existing permissions
         handler.QueueResponse(new HttpResponseMessage(HttpStatusCode.OK)
         {
             Content = new StringContent(JsonSerializer.Serialize(existing))

@@ -875,6 +875,78 @@ public class GraphApiService
     }
 
     /// <summary>
+    /// Resolves a blueprint app ID (client ID) to its Microsoft Entra object ID.
+    /// First attempts direct lookup, then falls back to filter query if needed.
+    /// </summary>
+    /// <param name="tenantId">The tenant ID</param>
+    /// <param name="blueprintAppId">The blueprint application (client) ID or object ID</param>
+    /// <param name="ct">Cancellation token</param>
+    /// <param name="requiredScopes">Optional scopes for delegated auth</param>
+    /// <returns>The resolved object ID, or the original ID if resolution fails</returns>
+    private async Task<string> ResolveBlueprintObjectIdAsync(
+        string tenantId,
+        string blueprintAppId,
+        CancellationToken ct = default,
+        IEnumerable<string>? requiredScopes = null)
+    {
+        // First try direct access to inheritable permissions endpoint
+        var getPath = $"/beta/applications/microsoft.graph.agentIdentityBlueprint/{blueprintAppId}/inheritablePermissions";
+        var existingDoc = await GraphGetAsync(tenantId, getPath, ct, requiredScopes);
+
+        if (existingDoc != null)
+        {
+            // Direct access worked, blueprintAppId is already an object ID
+            return blueprintAppId;
+        }
+
+        // Attempt to resolve as appId -> application object id
+        var apps = await GraphGetAsync(tenantId, $"/v1.0/applications?$filter=appId eq '{blueprintAppId}'&$select=id", ct, requiredScopes);
+        if (apps != null && apps.RootElement.TryGetProperty("value", out var arr) && arr.GetArrayLength() > 0)
+        {
+            var appObj = arr[0];
+            if (appObj.TryGetProperty("id", out var idEl))
+            {
+                var resolvedId = idEl.GetString();
+                if (!string.IsNullOrEmpty(resolvedId))
+                {
+                    return resolvedId;
+                }
+            }
+        }
+
+        // Fallback to original ID if resolution fails
+        return blueprintAppId;
+    }
+
+    /// <summary>
+    /// Parses inheritable scopes from a JSON element containing inheritableScopes.scopes array.
+    /// Handles both single-scope and space-separated multi-scope strings in array elements.
+    /// </summary>
+    /// <param name="entry">JSON element containing inheritableScopes property</param>
+    /// <returns>List of individual scope strings</returns>
+    private static List<string> ParseInheritableScopesFromJson(JsonElement entry)
+    {
+        var scopesList = new List<string>();
+        
+        if (entry.TryGetProperty("inheritableScopes", out var inheritable) &&
+            inheritable.TryGetProperty("scopes", out var scopesEl) && 
+            scopesEl.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var s in scopesEl.EnumerateArray().Where(s => s.ValueKind == JsonValueKind.String))
+            {
+                var raw = s.GetString() ?? string.Empty;
+                // Some entries may contain space-separated tokens; split defensively
+                foreach (var tok in raw.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                {
+                    scopesList.Add(tok);
+                }
+            }
+        }
+        
+        return scopesList;
+    }
+
+    /// <summary>
     /// Sets inheritable permissions for an agent blueprint with proper scope merging.
     /// Checks if permissions already exist and merges scopes if needed via PATCH.
     /// </summary>
@@ -893,28 +965,12 @@ public class GraphApiService
 
         try
         {
-            // First, try to resolve blueprintAppId to an application object id if needed
-            string blueprintObjectId = blueprintAppId;
+            // Resolve blueprintAppId to object ID if needed
+            var blueprintObjectId = await ResolveBlueprintObjectIdAsync(tenantId, blueprintAppId, ct, requiredScopes);
 
-            // Try GET for inheritablePermissions - if it fails, attempt to lookup application by appId
+            // Retrieve existing inheritable permissions
             var getPath = $"/beta/applications/microsoft.graph.agentIdentityBlueprint/{blueprintObjectId}/inheritablePermissions";
             var existingDoc = await GraphGetAsync(tenantId, getPath, ct, requiredScopes);
-
-            if (existingDoc == null)
-            {
-                // Attempt to resolve as appId -> application object id
-                var apps = await GraphGetAsync(tenantId, $"/v1.0/applications?$filter=appId eq '{blueprintAppId}'&$select=id", ct, requiredScopes);
-                if (apps != null && apps.RootElement.TryGetProperty("value", out var arr) && arr.GetArrayLength() > 0)
-                {
-                    var appObj = arr[0];
-                    if (appObj.TryGetProperty("id", out var idEl))
-                    {
-                        blueprintObjectId = idEl.GetString() ?? blueprintAppId;
-                        getPath = $"/beta/applications/microsoft.graph.agentIdentityBlueprint/{blueprintObjectId}/inheritablePermissions";
-                        existingDoc = await GraphGetAsync(tenantId, getPath, ct);
-                    }
-                }
-            }
 
             // Inspect existing entries
             JsonElement? existingEntry = null;
@@ -933,21 +989,10 @@ public class GraphApiService
 
             if (existingEntry is not null)
             {
-                // Merge scopes if necessary
-                var currentScopes = new List<string>();
-                if (existingEntry.Value.TryGetProperty("inheritableScopes", out var inheritable) &&
-                    inheritable.TryGetProperty("scopes", out var scopesEl) && scopesEl.ValueKind == JsonValueKind.Array)
-                {
-                    foreach (var s in scopesEl.EnumerateArray().Where(s => s.ValueKind == JsonValueKind.String))
-                    {
-                        var raw = s.GetString() ?? string.Empty;
-                        // Some entries may contain space-separated tokens; split defensively
-                        foreach (var tok in raw.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-                            currentScopes.Add(tok);
-                    }
-                }
-
+                // Parse existing scopes and merge with desired scopes
+                var currentScopes = ParseInheritableScopesFromJson(existingEntry.Value);
                 var currentSet = new HashSet<string>(currentScopes, StringComparer.OrdinalIgnoreCase);
+                
                 if (desiredSet.IsSubsetOf(currentSet))
                 {
                     _logger.LogInformation("Inheritable permissions already exist for blueprint {Blueprint} resource {Resource}", blueprintObjectId, resourceAppId);
@@ -1020,25 +1065,12 @@ public class GraphApiService
     {
         try
         {
-            string blueprintObjectId = blueprintAppId;
+            // Resolve blueprintAppId to object ID if needed
+            var blueprintObjectId = await ResolveBlueprintObjectIdAsync(tenantId, blueprintAppId, ct, requiredScopes);
+
+            // Retrieve inheritable permissions
             var getPath = $"/beta/applications/microsoft.graph.agentIdentityBlueprint/{blueprintObjectId}/inheritablePermissions";
             var existingDoc = await GraphGetAsync(tenantId, getPath, ct, requiredScopes);
-
-            if (existingDoc == null)
-            {
-                // Try to resolve as appId -> application object id
-                var apps = await GraphGetAsync(tenantId, $"/v1.0/applications?$filter=appId eq '{blueprintAppId}'&$select=id", ct, requiredScopes);
-                if (apps != null && apps.RootElement.TryGetProperty("value", out var arr) && arr.GetArrayLength() > 0)
-                {
-                    var appObj = arr[0];
-                    if (appObj.TryGetProperty("id", out var idEl))
-                    {
-                        blueprintObjectId = idEl.GetString() ?? blueprintAppId;
-                        getPath = $"/beta/applications/microsoft.graph.agentIdentityBlueprint/{blueprintObjectId}/inheritablePermissions";
-                        existingDoc = await GraphGetAsync(tenantId, getPath, ct, requiredScopes);
-                    }
-                }
-            }
 
             if (existingDoc == null)
             {
@@ -1053,18 +1085,8 @@ public class GraphApiService
                     var rId = item.TryGetProperty("resourceAppId", out var r) ? r.GetString() : null;
                     if (string.Equals(rId, resourceAppId, StringComparison.OrdinalIgnoreCase))
                     {
-                        // Found the resource, extract scopes
-                        var scopesList = new List<string>();
-                        if (item.TryGetProperty("inheritableScopes", out var inheritable) &&
-                            inheritable.TryGetProperty("scopes", out var scopesEl) && scopesEl.ValueKind == JsonValueKind.Array)
-                        {
-                            foreach (var s in scopesEl.EnumerateArray().Where(s => s.ValueKind == JsonValueKind.String))
-                            {
-                                var raw = s.GetString() ?? string.Empty;
-                                foreach (var tok in raw.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-                                    scopesList.Add(tok);
-                            }
-                        }
+                        // Found the resource, parse and return scopes
+                        var scopesList = ParseInheritableScopesFromJson(item);
                         return (exists: true, scopes: scopesList.ToArray(), error: null);
                     }
                 }

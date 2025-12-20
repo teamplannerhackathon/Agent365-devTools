@@ -399,6 +399,8 @@ public class CleanupCommand
         GraphApiService graphApiService,
         FileInfo? configFile)
     {
+        var cleanupSucceeded = false;
+        var hasFailures = false;
         try
         {
             logger.LogInformation("Starting complete cleanup...");
@@ -428,6 +430,8 @@ public class CleanupCommand
                 logger.LogInformation("    App Service Plan: {PlanName}", config.AppServicePlanName);
             if (!string.IsNullOrEmpty(config.BotName))
                 logger.LogInformation("    Azure Messaging Endpoint: {BotName}", config.BotName);
+            if (!string.IsNullOrEmpty(config.Location))
+                logger.LogInformation("    Location: {Location}", config.Location);
             logger.LogInformation("    Generated configuration file");
             logger.LogInformation("");
 
@@ -465,6 +469,7 @@ public class CleanupCommand
                 {
                     logger.LogWarning("Failed to delete agent blueprint application (will continue with other resources)");
                     logger.LogWarning("Local configuration will still be cleared at the end");
+                    hasFailures = true;
                 }
             }
 
@@ -485,6 +490,7 @@ public class CleanupCommand
                 {
                     logger.LogWarning("Failed to delete agent identity application (will continue with other resources)");
                     logger.LogWarning("Local configuration will still be cleared at the end");
+                    hasFailures = true;
                 }
             }
 
@@ -520,6 +526,7 @@ public class CleanupCommand
                     else
                     {
                         logger.LogWarning("Failed to delete messaging endpoint");
+                        hasFailures = true;
                     }
                 }
             }
@@ -590,26 +597,70 @@ public class CleanupCommand
                 logger.LogInformation("Azure resources deleted");
             }
 
-            // 6. Backup and delete generated config file
-            var generatedConfigPath = "a365.generated.config.json";
-            if (File.Exists(generatedConfigPath))
+            // Mark cleanup as successful only if no failures occurred
+            if (!hasFailures)
             {
-                var timestamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss");
-                var backupPath = $"a365.generated.config.backup-{timestamp}.json";
-                
-                logger.LogInformation("Backing up generated configuration to: {BackupPath}", backupPath);
-                File.Copy(generatedConfigPath, backupPath);
-                
-                logger.LogInformation("Deleting generated configuration file...");
-                File.Delete(generatedConfigPath);
-                logger.LogInformation("Generated configuration deleted (backup saved)");
+                cleanupSucceeded = true;
+                logger.LogInformation("Complete cleanup finished successfully!");
             }
-
-            logger.LogInformation("Complete cleanup finished successfully!");
+            else
+            {
+                logger.LogWarning("Cleanup completed with some failures. Review warnings above.");
+                logger.LogWarning("Generated configuration preserved. Fix issues and re-run cleanup if needed.");
+            }
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Complete cleanup failed: {Message}", ex.Message);
+            logger.LogWarning("Generated configuration file preserved due to cleanup failure. Fix issues and re-run cleanup.");
+        }
+        finally
+        {
+            // Only clean up generated config if all cleanup steps succeeded
+            if (cleanupSucceeded)
+            {
+                try
+                {
+                    var timestamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss");
+                    
+                    // Delete local generated config
+                    var localGeneratedPath = "a365.generated.config.json";
+                    if (File.Exists(localGeneratedPath))
+                    {
+                        var backupPath = $"a365.generated.config.backup-{timestamp}.json";
+                        
+                        logger.LogInformation("Backing up generated configuration to: {BackupPath}", backupPath);
+                        File.Copy(localGeneratedPath, backupPath);
+                        
+                        logger.LogInformation("Deleting local generated configuration file...");
+                        File.Delete(localGeneratedPath);
+                        logger.LogInformation("Local generated configuration deleted (backup saved)");
+                    }
+                    
+                    // Also delete global generated config (uses ConfigService for cross-platform path)
+                    var globalGeneratedPath = Path.Combine(
+                        ConfigService.GetGlobalConfigDirectory(),
+                        "a365.generated.config.json");
+                    
+                    if (File.Exists(globalGeneratedPath))
+                    {
+                        var globalBackupPath = Path.Combine(
+                            ConfigService.GetGlobalConfigDirectory(),
+                            $"a365.generated.config.backup-{timestamp}.json");
+                        
+                        logger.LogInformation("Backing up global generated configuration to: {BackupPath}", globalBackupPath);
+                        File.Copy(globalGeneratedPath, globalBackupPath);
+                        
+                        logger.LogInformation("Deleting global generated configuration file...");
+                        File.Delete(globalGeneratedPath);
+                        logger.LogInformation("Global generated configuration deleted (backup saved)");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Failed to clean up generated configuration file: {Message}", ex.Message);
+                }
+            }
         }
     }
 

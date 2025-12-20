@@ -50,6 +50,16 @@ public class GraphApiServiceVerifyInheritablePermissionsTests
             }
         };
 
+        // ResolveBlueprintObjectIdAsync: Check if bpAppId is an objectId (returns 404 NotFound)
+        handler.QueueResponse(new HttpResponseMessage(HttpStatusCode.NotFound));
+
+        // ResolveBlueprintObjectIdAsync: Resolve appId to objectId
+        handler.QueueResponse(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(JsonSerializer.Serialize(new { value = new[] { new { id = "resolved-object-id" } } }))
+        });
+
+        // VerifyInheritablePermissionsAsync: GET existing permissions
         handler.QueueResponse(new HttpResponseMessage(HttpStatusCode.OK)
         {
             Content = new StringContent(JsonSerializer.Serialize(response))
@@ -98,6 +108,16 @@ public class GraphApiServiceVerifyInheritablePermissionsTests
             }
         };
 
+        // ResolveBlueprintObjectIdAsync: Check if bpAppId is an objectId (returns 404 NotFound)
+        handler.QueueResponse(new HttpResponseMessage(HttpStatusCode.NotFound));
+
+        // ResolveBlueprintObjectIdAsync: Resolve appId to objectId
+        handler.QueueResponse(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(JsonSerializer.Serialize(new { value = new[] { new { id = "resolved-object-id" } } }))
+        });
+
+        // VerifyInheritablePermissionsAsync: GET existing permissions
         handler.QueueResponse(new HttpResponseMessage(HttpStatusCode.OK)
         {
             Content = new StringContent(JsonSerializer.Serialize(response))
