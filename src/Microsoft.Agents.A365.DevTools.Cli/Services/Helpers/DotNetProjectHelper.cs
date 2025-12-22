@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-using Microsoft.Agents.A365.DevTools.Cli.Models;
 using Microsoft.Extensions.Logging;
 using System.Text.RegularExpressions;
 
@@ -16,6 +15,15 @@ public static class DotNetProjectHelper
     /// Detects the target .NET runtime version (e.g. "8.0", "9.0") from a .csproj file.
     /// Supports both TargetFramework and TargetFrameworks.
     /// </summary>
+    /// <param name="projectFilePath">The full path to the .csproj file</param>
+    /// <param name="logger">Logger for diagnostic messages</param>
+    /// <returns>
+    /// The detected .NET version (e.g., "8.0", "9.0"), or null if:
+    /// - The file doesn't exist
+    /// - No TargetFramework element is found
+    /// - The TFM format is not recognized (only supports "netX.Y" format)
+    /// When multiple TFMs are specified, returns the first one.
+    /// </returns>
     public static string? DetectTargetRuntimeVersion(string projectFilePath, ILogger logger)
     {
         if (!File.Exists(projectFilePath))

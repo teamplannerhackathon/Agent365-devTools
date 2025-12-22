@@ -8,7 +8,7 @@ namespace Microsoft.Agents.A365.DevTools.Cli.Exceptions;
 /// <summary>
 /// Thrown when there is a .NET SDK version mismatch.
 /// </summary>
-public sealed class DotNetSdkVersionMismatchException  : Agent365Exception
+public sealed class DotNetSdkVersionMismatchException : Agent365Exception
 {
     public override bool IsUserError => true;
     public override int ExitCode => 1;
