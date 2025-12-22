@@ -270,12 +270,12 @@ public class BotConfigurator : IBotConfigurator
 
                 if (!response.IsSuccessStatusCode)
                 {
+                    // Read error content ONCE for all error handling
+                    var errorContent = await response.Content.ReadAsStringAsync();
                     // Check if resource was not found - this is success for deletion (idempotent)
                     if (response.StatusCode == System.Net.HttpStatusCode.NotFound || 
                         response.StatusCode == System.Net.HttpStatusCode.BadRequest)
                     {
-                        var errorContent = await response.Content.ReadAsStringAsync();
-                        
                         // For BadRequest, verify it's actually "not found" scenario
                         if (response.StatusCode == System.Net.HttpStatusCode.BadRequest)
                         {
@@ -303,13 +303,10 @@ public class BotConfigurator : IBotConfigurator
                             return true; // Not found is success for deletion
                         }
                     }
-                    
                     // Real error - log and return false
-                    var errorContent2 = await response.Content.ReadAsStringAsync();
-                    
                     try
                     {
-                        var errorJson = JsonSerializer.Deserialize<JsonElement>(errorContent2);
+                        var errorJson = JsonSerializer.Deserialize<JsonElement>(errorContent);
                         if (errorJson.TryGetProperty("error", out var errorMessage))
                         {
                             var error = errorMessage.GetString();
@@ -319,15 +316,14 @@ public class BotConfigurator : IBotConfigurator
                         else
                         {
                             _logger.LogError("Failed to delete bot endpoint. Status: {Status}", response.StatusCode);
-                            _logger.LogError("Error response: {Error}", errorContent2);
+                            _logger.LogError("Error response: {Error}", errorContent);
                         }
                     }
                     catch
                     {
                         _logger.LogError("Failed to delete bot endpoint. Status: {Status}", response.StatusCode);
-                        _logger.LogError("Error response: {Error}", errorContent2);
+                        _logger.LogError("Error response: {Error}", errorContent);
                     }
-
                     return false;
                 }
 

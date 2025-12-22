@@ -131,7 +131,6 @@ public class AgentPublishService
                     if (fic.TryGetProperty("subject", out var subject) && 
                         subject.GetString() == subjectValue)
                     {
-                        var name = fic.TryGetProperty("name", out var n) ? n.GetString() : "unknown";
                         _logger.LogInformation("Workload identity authentication already configured");
                         return;
                     }

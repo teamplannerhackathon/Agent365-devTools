@@ -507,6 +507,7 @@ public class CleanupCommand
                 if (string.IsNullOrEmpty(config.AgentBlueprintId))
                 {
                     logger.LogError("Agent Blueprint ID not found. Agent Blueprint ID is required for deleting endpoint registration.");
+                    hasFailures = true;
                 }
                 else
                 {
