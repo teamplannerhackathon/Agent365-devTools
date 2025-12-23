@@ -886,18 +886,81 @@ public static class InfrastructureSubcommand
             return null;
         }
 
-        // Validate local SDK
-        var sdkResult = executor.ExecuteAsync("dotnet", "--version", captureOutput: true).GetAwaiter().GetResult();
-        var installedVersion = sdkResult.Success ? sdkResult.StandardOutput.Trim() : null;
+        // Validate local SDK with retry logic to handle intermittent process spawn failures
+        CommandResult? sdkResult = null;
+        string? installedVersion = null;
+        int maxAttempts = 3;
+        
+        for (int attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            sdkResult = executor.ExecuteAsync("dotnet", "--version", captureOutput: true).GetAwaiter().GetResult();
+            
+            if (sdkResult.Success && !string.IsNullOrWhiteSpace(sdkResult.StandardOutput))
+            {
+                installedVersion = sdkResult.StandardOutput.Trim();
+                break; // Success!
+            }
+            
+            if (attempt < maxAttempts)
+            {
+                logger.LogWarning(
+                    "dotnet --version check failed (attempt {Attempt}/{MaxAttempts}). Retrying...", 
+                    attempt, maxAttempts);
+                Thread.Sleep(500); // 500ms delay before retry
+            }
+        }
 
-        if (!sdkResult.Success || 
-            string.IsNullOrWhiteSpace(installedVersion) ||
-            !installedVersion.StartsWith(version, StringComparison.Ordinal))
+        if (string.IsNullOrWhiteSpace(installedVersion))
         {
             throw new DotNetSdkVersionMismatchException(
                 requiredVersion: version,
                 installedVersion: installedVersion,
                 projectFilePath: csproj);
+        }
+
+        // Parse installed SDK version (e.g., "9.0.308" -> major: 9, minor: 0)
+        var installedParts = installedVersion.Split('.');
+        if (installedParts.Length < 2 ||
+            !int.TryParse(installedParts[0], out var installedMajor) ||
+            !int.TryParse(installedParts[1], out var installedMinor))
+        {
+            logger.LogWarning("Unable to parse installed SDK version: {Version}", installedVersion);
+            // Continue anyway - dotnet build will fail if truly incompatible
+            return version;
+        }
+
+        // Parse target framework version (e.g., "8.0" -> major: 8, minor: 0)
+        var targetParts = version.Split('.');
+        if (targetParts.Length < 2 ||
+            !int.TryParse(targetParts[0], out var targetMajor) ||
+            !int.TryParse(targetParts[1], out var targetMinor))
+        {
+            logger.LogWarning("Unable to parse target framework version: {Version}", version);
+            return version;
+        }
+
+        // Check if installed SDK can build the target framework
+        // .NET SDK supports building projects targeting the same or lower version
+        // E.g., .NET 9 SDK can build .NET 8, 7, 6 projects
+        var installedVersionNumber = installedMajor * 10 + installedMinor;
+        var targetVersionNumber = targetMajor * 10 + targetMinor;
+
+        if (installedVersionNumber < targetVersionNumber)
+        {
+            // Installed SDK is older than target framework - this is a real problem
+            throw new DotNetSdkVersionMismatchException(
+                requiredVersion: version,
+                installedVersion: installedVersion,
+                projectFilePath: csproj);
+        }
+
+        // Installed SDK is same or newer - this is fine!
+        if (installedVersionNumber > targetVersionNumber)
+        {
+            logger.LogInformation(
+                ".NET {InstalledVersion} SDK detected (project targets .NET {TargetVersion}) - forward compatibility enabled",
+                installedVersion,
+                version);
         }
 
         return version; // e.g. "8.0", "9.0"
