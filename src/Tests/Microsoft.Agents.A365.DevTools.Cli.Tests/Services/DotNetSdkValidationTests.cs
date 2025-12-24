@@ -41,13 +41,13 @@ public class DotNetSdkValidationTests : IDisposable
     /// This simulates the race condition that can occur under system load
     /// </summary>
     [Fact]
-    public void ResolveDotNetRuntimeVersion_WhenDotNetVersionCommandFails_ThrowsDotNetSdkVersionMismatchException()
+    public async Task ResolveDotNetRuntimeVersion_WhenDotNetVersionCommandFails_ThrowsDotNetSdkVersionMismatchException()
     {
         // Arrange - Create a test .csproj file targeting .NET 8.0
-        var projectFile = CreateTestProject("net8.0");
+        CreateTestProject("net8.0");
         
         // Mock: dotnet --version command FAILS (simulating intermittent process spawn failure)
-        _commandExecutor.ExecuteAsync("dotnet", "--version", captureOutput: true)
+        _commandExecutor.ExecuteAsync("dotnet", "--version", captureOutput: true, cancellationToken: Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(new CommandResult 
             { 
                 ExitCode = 1,  // ? Command failed
@@ -55,10 +55,10 @@ public class DotNetSdkValidationTests : IDisposable
             }));
 
         // Act & Assert
-        var exception = Assert.Throws<DotNetSdkVersionMismatchException>(() =>
+        var exception = await Assert.ThrowsAsync<DotNetSdkVersionMismatchException>(async () =>
         {
             // Call the private static method using reflection
-            var result = InvokeResolveDotNetRuntimeVersion(
+            await InvokeResolveDotNetRuntimeVersionAsync(
                 ProjectPlatform.DotNet, 
                 _testProjectPath);
         });
@@ -75,14 +75,14 @@ public class DotNetSdkValidationTests : IDisposable
     /// This reproduces the exact error message from the user's report
     /// </summary>
     [Fact]
-    public void ResolveDotNetRuntimeVersion_WhenVersionDetectedButValidationFails_ShowsContradictoryError()
+    public async Task ResolveDotNetRuntimeVersion_WhenVersionDetectedButValidationFails_ShowsContradictoryError()
     {
         // Arrange - Create a test .csproj file targeting .NET 8.0
         var projectFile = CreateTestProject("net8.0");
         
         // Mock: dotnet --version returns 9.0.308 (which SHOULD work for .NET 8 projects)
         // But the command reports ExitCode != 0 (simulating intermittent failure)
-        _commandExecutor.ExecuteAsync("dotnet", "--version", captureOutput: true)
+        _commandExecutor.ExecuteAsync("dotnet", "--version", captureOutput: true, cancellationToken: Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(new CommandResult 
             { 
                 ExitCode = 1,  // ? Command failed even though it returned version
@@ -91,9 +91,9 @@ public class DotNetSdkValidationTests : IDisposable
             }));
 
         // Act & Assert
-        var exception = Assert.Throws<DotNetSdkVersionMismatchException>(() =>
+        var exception = await Assert.ThrowsAsync<DotNetSdkVersionMismatchException>(async () =>
         {
-            InvokeResolveDotNetRuntimeVersion(
+            await InvokeResolveDotNetRuntimeVersionAsync(
                 ProjectPlatform.DotNet, 
                 _testProjectPath);
         });
@@ -111,13 +111,13 @@ public class DotNetSdkValidationTests : IDisposable
     /// Tests successful scenario - SDK 9.0 building .NET 8.0 project
     /// </summary>
     [Fact]
-    public void ResolveDotNetRuntimeVersion_WhenNewerSdkInstalled_SucceedsWithForwardCompatibility()
+    public async Task ResolveDotNetRuntimeVersion_WhenNewerSdkInstalled_SucceedsWithForwardCompatibility()
     {
         // Arrange
         var projectFile = CreateTestProject("net8.0");
         
         // Mock: dotnet --version returns 9.0.308 (newer than target)
-        _commandExecutor.ExecuteAsync("dotnet", "--version", captureOutput: true)
+        _commandExecutor.ExecuteAsync("dotnet", "--version", captureOutput: true, cancellationToken: Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(new CommandResult 
             { 
                 ExitCode = 0,  // ? Command succeeded
@@ -125,7 +125,7 @@ public class DotNetSdkValidationTests : IDisposable
             }));
 
         // Act
-        var version = InvokeResolveDotNetRuntimeVersion(
+        var version = await InvokeResolveDotNetRuntimeVersionAsync(
             ProjectPlatform.DotNet, 
             _testProjectPath);
 
@@ -139,13 +139,13 @@ public class DotNetSdkValidationTests : IDisposable
     /// Tests scenario where installed SDK is older than target framework
     /// </summary>
     [Fact]
-    public void ResolveDotNetRuntimeVersion_WhenOlderSdkInstalled_ThrowsDotNetSdkVersionMismatchException()
+    public async Task ResolveDotNetRuntimeVersion_WhenOlderSdkInstalled_ThrowsDotNetSdkVersionMismatchException()
     {
         // Arrange
         var projectFile = CreateTestProject("net9.0");
         
         // Mock: dotnet --version returns 8.0.100 (older than target)
-        _commandExecutor.ExecuteAsync("dotnet", "--version", captureOutput: true)
+        _commandExecutor.ExecuteAsync("dotnet", "--version", captureOutput: true, cancellationToken: Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(new CommandResult 
             { 
                 ExitCode = 0,
@@ -153,9 +153,9 @@ public class DotNetSdkValidationTests : IDisposable
             }));
 
         // Act & Assert
-        var exception = Assert.Throws<DotNetSdkVersionMismatchException>(() =>
+        var exception = await Assert.ThrowsAsync<DotNetSdkVersionMismatchException>(async () =>
         {
-            InvokeResolveDotNetRuntimeVersion(
+            await InvokeResolveDotNetRuntimeVersionAsync(
                 ProjectPlatform.DotNet, 
                 _testProjectPath);
         });
@@ -167,11 +167,10 @@ public class DotNetSdkValidationTests : IDisposable
     }
 
     /// <summary>
-    /// Stress test - Validates that retry logic handles intermittent failures gracefully
-    /// With the retry fix, first attempt fails but retry succeeds
+    /// Tests that when all retry attempts fail, the method throws DotNetSdkVersionMismatchException
     /// </summary>
     [Fact]
-    public void ResolveDotNetRuntimeVersion_UnderLoad_ShouldHandleGracefully()
+    public async Task ResolveDotNetRuntimeVersion_WhenAllRetriesFail_ThrowsException()
     {
         // Arrange
         CreateTestProject("net8.0");
@@ -179,62 +178,53 @@ public class DotNetSdkValidationTests : IDisposable
         var callCount = 0;
         var lockObj = new object();
         
-        // Mock: First 3 calls fail, then succeed (simulates retry succeeding after initial failure)
-        _commandExecutor.ExecuteAsync("dotnet", "--version", captureOutput: true)
+        // Mock: All 3 attempts fail
+        _commandExecutor.ExecuteAsync("dotnet", "--version", captureOutput: true, cancellationToken: Arg.Any<CancellationToken>())
             .Returns(callInfo =>
             {
-                int currentCall;
                 lock (lockObj)
                 {
                     callCount++;
-                    currentCall = callCount;
                 }
-                
-                // First 3 attempts fail (representing 1 initial attempt + 2 retries for first call)
-                // Then all subsequent calls succeed
-                var shouldFail = currentCall <= 3;
                 
                 return Task.FromResult(new CommandResult 
                 { 
-                    ExitCode = shouldFail ? 1 : 0,
-                    StandardOutput = shouldFail ? "" : "9.0.308",
-                    StandardError = shouldFail ? "Intermittent failure" : ""
+                    ExitCode = 1,
+                    StandardOutput = "",
+                    StandardError = "Intermittent failure"
                 });
             });
 
-        // Act - Call the method (will retry on failure)
-        string? result = null;
-        Exception? caughtException = null;
-        
-        try
+        // Act & Assert
+        var exception = await Assert.ThrowsAsync<DotNetSdkVersionMismatchException>(async () =>
         {
-            result = InvokeResolveDotNetRuntimeVersion(
+            await InvokeResolveDotNetRuntimeVersionAsync(
                 ProjectPlatform.DotNet, 
                 _testProjectPath);
-        }
-        catch (Exception ex)
-        {
-            caughtException = ex;
-        }
+        });
 
-        // Assert - With 3-attempt retry logic:
-        // - First attempt fails (call 1)
-        // - Second attempt fails (call 2)
-        // - Third attempt fails (call 3)
-        // - Should eventually throw exception after all retries exhausted
-        caughtException.Should().BeOfType<DotNetSdkVersionMismatchException>(
-            "All 3 retry attempts fail, so exception should be thrown");
-        
+        // Assert - Should have attempted 3 times before giving up
+        exception.Should().NotBeNull();
         callCount.Should().Be(3, "Should have attempted 3 times before giving up");
         
-        _output.WriteLine($"? Retry logic working: Made {callCount} attempts before giving up");
-        _output.WriteLine($"This correctly demonstrates retry behavior with persistent failures");
+        _output.WriteLine($"? Retry logic working: Made {callCount} attempts before throwing exception");
+        _output.WriteLine($"Exception message: {exception.Message}");
+    }
+
+    /// <summary>
+    /// Tests that when the first attempt fails but a retry succeeds, the method returns the version
+    /// </summary>
+    [Fact]
+    public async Task ResolveDotNetRuntimeVersion_WhenFirstAttemptFailsButRetrySucceeds_ReturnsVersion()
+    {
+        // Arrange
+        CreateTestProject("net8.0");
         
-        // Now test successful retry scenario
-        callCount = 0;
+        var callCount = 0;
+        var lockObj = new object();
         
-        // Mock: First call fails, but retry succeeds
-        _commandExecutor.ExecuteAsync("dotnet", "--version", captureOutput: true)
+        // Mock: First call fails, second succeeds
+        _commandExecutor.ExecuteAsync("dotnet", "--version", captureOutput: true, cancellationToken: Arg.Any<CancellationToken>())
             .Returns(callInfo =>
             {
                 int currentCall;
@@ -255,13 +245,13 @@ public class DotNetSdkValidationTests : IDisposable
                 });
             });
 
-        // Act - Second test with successful retry
-        result = InvokeResolveDotNetRuntimeVersion(
+        // Act
+        var version = await InvokeResolveDotNetRuntimeVersionAsync(
             ProjectPlatform.DotNet, 
             _testProjectPath);
 
         // Assert - Should succeed on retry
-        result.Should().Be("8.0", "Retry should succeed and detect .NET 8.0");
+        version.Should().Be("8.0", "Retry should succeed and detect .NET 8.0");
         callCount.Should().Be(2, "Should fail once then succeed on retry");
         
         _output.WriteLine($"? Successful retry: Failed once, succeeded on attempt 2");
@@ -271,13 +261,13 @@ public class DotNetSdkValidationTests : IDisposable
     /// Test with malformed version output
     /// </summary>
     [Fact]
-    public void ResolveDotNetRuntimeVersion_WhenVersionOutputMalformed_HandlesGracefully()
+    public async Task ResolveDotNetRuntimeVersion_WhenVersionOutputMalformed_HandlesGracefully()
     {
         // Arrange
         CreateTestProject("net8.0");
         
         // Mock: dotnet --version returns malformed output
-        _commandExecutor.ExecuteAsync("dotnet", "--version", captureOutput: true)
+        _commandExecutor.ExecuteAsync("dotnet", "--version", captureOutput: true, cancellationToken: Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(new CommandResult 
             { 
                 ExitCode = 0,
@@ -285,7 +275,7 @@ public class DotNetSdkValidationTests : IDisposable
             }));
 
         // Act
-        var version = InvokeResolveDotNetRuntimeVersion(
+        var version = await InvokeResolveDotNetRuntimeVersionAsync(
             ProjectPlatform.DotNet, 
             _testProjectPath);
 
@@ -316,32 +306,38 @@ public class DotNetSdkValidationTests : IDisposable
         return projectFile;
     }
 
-    private string? InvokeResolveDotNetRuntimeVersion(
+    private async Task<string?> InvokeResolveDotNetRuntimeVersionAsync(
         ProjectPlatform platform, 
         string projectPath)
     {
-        // Use reflection to call the private static method
+        // Use reflection to call the private static async method
         var infrastructureType = typeof(InfrastructureSubcommand);
         var method = infrastructureType.GetMethod(
-            "ResolveDotNetRuntimeVersion", 
+            "ResolveDotNetRuntimeVersionAsync", 
             BindingFlags.NonPublic | BindingFlags.Static);
 
         if (method == null)
         {
-            throw new InvalidOperationException("ResolveDotNetRuntimeVersion method not found");
+            throw new InvalidOperationException("ResolveDotNetRuntimeVersionAsync method not found");
         }
 
         try
         {
-            var result = method.Invoke(null, new object[] 
+            var task = method.Invoke(null, new object[] 
             { 
                 platform, 
                 projectPath, 
                 _commandExecutor, 
-                _logger 
-            });
+                _logger,
+                CancellationToken.None
+            }) as Task<string?>;
             
-            return result as string;
+            if (task == null)
+            {
+                throw new InvalidOperationException("Method did not return a Task<string?>");
+            }
+            
+            return await task;
         }
         catch (TargetInvocationException ex)
         {
