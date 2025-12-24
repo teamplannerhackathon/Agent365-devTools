@@ -9,6 +9,7 @@ using Microsoft.Agents.A365.DevTools.Cli.Services;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 using System.Reflection;
+using System.Threading;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -50,7 +51,7 @@ public class DotNetSdkValidationTests : IDisposable
         _commandExecutor.ExecuteAsync("dotnet", "--version", captureOutput: true, cancellationToken: Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(new CommandResult 
             { 
-                ExitCode = 1,  // ? Command failed
+                ExitCode = 1,  // Command failed
                 StandardError = "Process spawn failed"
             }));
 
@@ -60,14 +61,15 @@ public class DotNetSdkValidationTests : IDisposable
             // Call the private static method using reflection
             await InvokeResolveDotNetRuntimeVersionAsync(
                 ProjectPlatform.DotNet, 
-                _testProjectPath);
+                _testProjectPath,
+                CancellationToken.None);
         });
 
         // Verify exception details
         exception.Should().NotBeNull();
         exception.Message.Should().Contain("The project targets .NET 8.0, but the required .NET SDK is not installed");
         
-        _output.WriteLine($"? Test reproduced the issue: {exception.Message}");
+        _output.WriteLine($"Test reproduced the issue: {exception.Message}");
     }
 
     /// <summary>
@@ -85,8 +87,8 @@ public class DotNetSdkValidationTests : IDisposable
         _commandExecutor.ExecuteAsync("dotnet", "--version", captureOutput: true, cancellationToken: Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(new CommandResult 
             { 
-                ExitCode = 1,  // ? Command failed even though it returned version
-                StandardOutput = "9.0.308",  // ? Version detected
+                ExitCode = 1,  // Command failed even though it returned version
+                StandardOutput = "9.0.308",  // Version detected
                 StandardError = "Timeout"
             }));
 
@@ -95,14 +97,15 @@ public class DotNetSdkValidationTests : IDisposable
         {
             await InvokeResolveDotNetRuntimeVersionAsync(
                 ProjectPlatform.DotNet, 
-                _testProjectPath);
+                _testProjectPath,
+                CancellationToken.None);
         });
 
         // This reproduces the contradictory error:
         // "Installed SDK version: 9.0.308" but still throws "SDK is not installed"
         exception.Message.Should().Contain("required .NET SDK is not installed");
         
-        _output.WriteLine("? Reproduced contradictory error:");
+        _output.WriteLine("Reproduced contradictory error:");
         _output.WriteLine($"   Detected version in output: 9.0.308");
         _output.WriteLine($"   But exception still thrown: {exception.Message}");
     }
@@ -120,19 +123,20 @@ public class DotNetSdkValidationTests : IDisposable
         _commandExecutor.ExecuteAsync("dotnet", "--version", captureOutput: true, cancellationToken: Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(new CommandResult 
             { 
-                ExitCode = 0,  // ? Command succeeded
+                ExitCode = 0,  // Command succeeded
                 StandardOutput = "9.0.308"
             }));
 
         // Act
         var version = await InvokeResolveDotNetRuntimeVersionAsync(
             ProjectPlatform.DotNet, 
-            _testProjectPath);
+            _testProjectPath,
+            CancellationToken.None);
 
         // Assert
         version.Should().Be("8.0");
         
-        _output.WriteLine($"? Forward compatibility works: SDK 9.0.308 can build .NET 8.0");
+        _output.WriteLine($"Forward compatibility works: SDK 9.0.308 can build .NET 8.0");
     }
 
     /// <summary>
@@ -157,13 +161,14 @@ public class DotNetSdkValidationTests : IDisposable
         {
             await InvokeResolveDotNetRuntimeVersionAsync(
                 ProjectPlatform.DotNet, 
-                _testProjectPath);
+                _testProjectPath,
+                CancellationToken.None);
         });
 
         exception.Message.Should().Contain("targets .NET 9.0");
         exception.Message.Should().Contain("Installed SDK version: 8.0.100");
         
-        _output.WriteLine($"? Correctly detected incompatible SDK: {exception.Message}");
+        _output.WriteLine($"Correctly detected incompatible SDK: {exception.Message}");
     }
 
     /// <summary>
@@ -176,16 +181,12 @@ public class DotNetSdkValidationTests : IDisposable
         CreateTestProject("net8.0");
         
         var callCount = 0;
-        var lockObj = new object();
         
         // Mock: All 3 attempts fail
         _commandExecutor.ExecuteAsync("dotnet", "--version", captureOutput: true, cancellationToken: Arg.Any<CancellationToken>())
             .Returns(callInfo =>
             {
-                lock (lockObj)
-                {
-                    callCount++;
-                }
+                Interlocked.Increment(ref callCount);
                 
                 return Task.FromResult(new CommandResult 
                 { 
@@ -200,14 +201,15 @@ public class DotNetSdkValidationTests : IDisposable
         {
             await InvokeResolveDotNetRuntimeVersionAsync(
                 ProjectPlatform.DotNet, 
-                _testProjectPath);
+                _testProjectPath,
+                CancellationToken.None);
         });
 
         // Assert - Should have attempted 3 times before giving up
         exception.Should().NotBeNull();
         callCount.Should().Be(3, "Should have attempted 3 times before giving up");
         
-        _output.WriteLine($"? Retry logic working: Made {callCount} attempts before throwing exception");
+        _output.WriteLine($"Retry logic working: Made {callCount} attempts before throwing exception");
         _output.WriteLine($"Exception message: {exception.Message}");
     }
 
@@ -221,18 +223,12 @@ public class DotNetSdkValidationTests : IDisposable
         CreateTestProject("net8.0");
         
         var callCount = 0;
-        var lockObj = new object();
         
         // Mock: First call fails, second succeeds
         _commandExecutor.ExecuteAsync("dotnet", "--version", captureOutput: true, cancellationToken: Arg.Any<CancellationToken>())
             .Returns(callInfo =>
             {
-                int currentCall;
-                lock (lockObj)
-                {
-                    callCount++;
-                    currentCall = callCount;
-                }
+                int currentCall = Interlocked.Increment(ref callCount);
                 
                 // Only first attempt fails, second succeeds
                 var shouldFail = currentCall == 1;
@@ -248,13 +244,14 @@ public class DotNetSdkValidationTests : IDisposable
         // Act
         var version = await InvokeResolveDotNetRuntimeVersionAsync(
             ProjectPlatform.DotNet, 
-            _testProjectPath);
+            _testProjectPath,
+            CancellationToken.None);
 
         // Assert - Should succeed on retry
         version.Should().Be("8.0", "Retry should succeed and detect .NET 8.0");
         callCount.Should().Be(2, "Should fail once then succeed on retry");
         
-        _output.WriteLine($"? Successful retry: Failed once, succeeded on attempt 2");
+        _output.WriteLine($"Successful retry: Failed once, succeeded on attempt 2");
     }
 
     /// <summary>
@@ -271,18 +268,19 @@ public class DotNetSdkValidationTests : IDisposable
             .Returns(Task.FromResult(new CommandResult 
             { 
                 ExitCode = 0,
-                StandardOutput = "invalid-version-format"  // ? Malformed
+                StandardOutput = "invalid-version-format"  // Malformed
             }));
 
         // Act
         var version = await InvokeResolveDotNetRuntimeVersionAsync(
             ProjectPlatform.DotNet, 
-            _testProjectPath);
+            _testProjectPath,
+            CancellationToken.None);
 
         // Assert - Should still return detected target version
         version.Should().Be("8.0");
         
-        _output.WriteLine("? Gracefully handled malformed SDK version output");
+        _output.WriteLine("Gracefully handled malformed SDK version output");
     }
 
     #region Helper Methods
@@ -308,7 +306,8 @@ public class DotNetSdkValidationTests : IDisposable
 
     private async Task<string?> InvokeResolveDotNetRuntimeVersionAsync(
         ProjectPlatform platform, 
-        string projectPath)
+        string projectPath,
+        CancellationToken cancellationToken = default)
     {
         // Use reflection to call the private static async method
         var infrastructureType = typeof(InfrastructureSubcommand);
@@ -329,7 +328,7 @@ public class DotNetSdkValidationTests : IDisposable
                 projectPath, 
                 _commandExecutor, 
                 _logger,
-                CancellationToken.None
+                cancellationToken
             }) as Task<string?>;
             
             if (task == null)

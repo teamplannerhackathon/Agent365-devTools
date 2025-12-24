@@ -502,7 +502,7 @@ public static class InfrastructureSubcommand
             var webShow = await executor.ExecuteAsync("az", $"webapp show -g {resourceGroup} -n {webAppName} --subscription {subscriptionId}", captureOutput: true, suppressErrorLogging: true);
             if (!webShow.Success)
             {
-                var runtime = await GetRuntimeForPlatformAsync(platform, deploymentProjectPath, executor, logger);
+                var runtime = await GetRuntimeForPlatformAsync(platform, deploymentProjectPath, executor, logger, cancellationToken);
                 logger.LogInformation("Creating web app {App} with runtime {Runtime}", webAppName, runtime);
                 var createResult = await executor.ExecuteAsync("az", $"webapp create -g {resourceGroup} -p {planName} -n {webAppName} --runtime \"{runtime}\" --subscription {subscriptionId}", captureOutput: true, suppressErrorLogging: true);
                 if (!createResult.Success)
@@ -558,7 +558,7 @@ public static class InfrastructureSubcommand
             }
             else
             {
-                var linuxFxVersion = await GetLinuxFxVersionForPlatformAsync(platform, deploymentProjectPath, executor, logger);
+                var linuxFxVersion = await GetLinuxFxVersionForPlatformAsync(platform, deploymentProjectPath, executor, logger, cancellationToken);
                 logger.LogInformation("Web app already exists: {App} (skipping creation)", webAppName);
                 logger.LogInformation("Configuring web app to use {Platform} runtime ({LinuxFxVersion})...", platform, linuxFxVersion);
                 await AzWarnAsync(executor, logger, $"webapp config set -g {resourceGroup} -n {webAppName} --linux-fx-version \"{linuxFxVersion}\" --subscription {subscriptionId}", "Configure runtime");
@@ -824,9 +824,14 @@ public static class InfrastructureSubcommand
     /// Get the Azure Web App runtime string based on the detected platform
     /// (from A365SetupRunner GetRuntimeForPlatform method)
     /// </summary>
-    private static async Task<string> GetRuntimeForPlatformAsync(Models.ProjectPlatform platform, string? deploymentProjectPath, CommandExecutor executor, ILogger logger)
+    private static async Task<string> GetRuntimeForPlatformAsync(
+        Models.ProjectPlatform platform, 
+        string? deploymentProjectPath, 
+        CommandExecutor executor, 
+        ILogger logger,
+        CancellationToken cancellationToken = default)
     {
-        var dotnetVersion = await ResolveDotNetRuntimeVersionAsync(platform, deploymentProjectPath, executor, logger);
+        var dotnetVersion = await ResolveDotNetRuntimeVersionAsync(platform, deploymentProjectPath, executor, logger, cancellationToken);
         if (!string.IsNullOrWhiteSpace(dotnetVersion))
         {
             return $"DOTNETCORE:{dotnetVersion}";
@@ -845,9 +850,14 @@ public static class InfrastructureSubcommand
     /// Get the Azure Web App Linux FX Version string based on the detected platform
     /// (from A365SetupRunner GetLinuxFxVersionForPlatform method)
     /// </summary>
-    private static async Task<string> GetLinuxFxVersionForPlatformAsync(Models.ProjectPlatform platform, string? deploymentProjectPath, CommandExecutor executor, ILogger logger)
+    private static async Task<string> GetLinuxFxVersionForPlatformAsync(
+        Models.ProjectPlatform platform, 
+        string? deploymentProjectPath, 
+        CommandExecutor executor, 
+        ILogger logger,
+        CancellationToken cancellationToken = default)
     {
-        var dotnetVersion = await ResolveDotNetRuntimeVersionAsync(platform, deploymentProjectPath, executor, logger);
+        var dotnetVersion = await ResolveDotNetRuntimeVersionAsync(platform, deploymentProjectPath, executor, logger, cancellationToken);
         if (!string.IsNullOrWhiteSpace(dotnetVersion))
         {
             return $"DOTNETCORE:{dotnetVersion}";
@@ -924,21 +934,23 @@ public static class InfrastructureSubcommand
         }
 
         // Parse installed SDK version (e.g., "9.0.308" -> major: 9)
+        // Validate format: must have at least major.minor (e.g., "9.0")
         var installedParts = installedVersion.Split('.');
-        if (installedParts.Length < 1 ||
+        if (installedParts.Length < 2 ||
             !int.TryParse(installedParts[0], out var installedMajor))
         {
-            logger.LogWarning("Unable to parse installed SDK version: {Version}", installedVersion);
+            logger.LogWarning("Unable to parse installed SDK version: {Version}. Expected format: major.minor.patch (e.g., 9.0.308)", installedVersion);
             // Continue anyway - dotnet build will fail if truly incompatible
             return version;
         }
 
         // Parse target framework version (e.g., "8.0" -> major: 8)
+        // Validate format: must have at least major.minor (e.g., "8.0")
         var targetParts = version.Split('.');
-        if (targetParts.Length < 1 ||
+        if (targetParts.Length < 2 ||
             !int.TryParse(targetParts[0], out var targetMajor))
         {
-            logger.LogWarning("Unable to parse target framework version: {Version}", version);
+            logger.LogWarning("Unable to parse target framework version: {Version}. Expected format: major.minor (e.g., net8.0)", version);
             return version;
         }
 
