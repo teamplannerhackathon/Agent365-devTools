@@ -23,6 +23,7 @@ public static class InfrastructureSubcommand
     // SDK validation retry configuration
     private const int MaxSdkValidationAttempts = 3;
     private const int InitialRetryDelayMs = 500;
+    private const int MaxRetryDelayMs = 5000; // Cap exponential backoff at 5 seconds
     
     /// <summary>
     /// Validates infrastructure prerequisites without performing any actions.
@@ -904,25 +905,33 @@ public static class InfrastructureSubcommand
         // Validate local SDK with retry logic (exponential backoff) to handle intermittent process spawn failures
         string? installedVersion = null;
         
-        for (int attempt = 1; attempt <= MaxSdkValidationAttempts; attempt++)
+        try
         {
-            var sdkResult = await executor.ExecuteAsync("dotnet", "--version", captureOutput: true, cancellationToken: cancellationToken);
-            
-            if (sdkResult.Success && !string.IsNullOrWhiteSpace(sdkResult.StandardOutput))
+            for (int attempt = 1; attempt <= MaxSdkValidationAttempts; attempt++)
             {
-                installedVersion = sdkResult.StandardOutput.Trim();
-                break; // Success!
+                var sdkResult = await executor.ExecuteAsync("dotnet", "--version", captureOutput: true, cancellationToken: cancellationToken);
+                
+                if (sdkResult.Success && !string.IsNullOrWhiteSpace(sdkResult.StandardOutput))
+                {
+                    installedVersion = sdkResult.StandardOutput.Trim();
+                    break; // Success!
+                }
+                
+                if (attempt < MaxSdkValidationAttempts)
+                {
+                    // Exponential backoff with cap: 500ms, 1000ms, 2000ms (capped at MaxRetryDelayMs)
+                    var delayMs = Math.Min(InitialRetryDelayMs * (1 << (attempt - 1)), MaxRetryDelayMs);
+                    logger.LogWarning(
+                        "dotnet --version check failed (attempt {Attempt}/{MaxAttempts}). Retrying in {DelayMs}ms...", 
+                        attempt, MaxSdkValidationAttempts, delayMs);
+                    await Task.Delay(delayMs, cancellationToken);
+                }
             }
-            
-            if (attempt < MaxSdkValidationAttempts)
-            {
-                // Exponential backoff: 500ms, 1000ms, 2000ms
-                var delayMs = InitialRetryDelayMs * (1 << (attempt - 1));
-                logger.LogWarning(
-                    "dotnet --version check failed (attempt {Attempt}/{MaxAttempts}). Retrying in {Delay}ms...", 
-                    attempt, MaxSdkValidationAttempts, delayMs);
-                await Task.Delay(delayMs, cancellationToken);
-            }
+        }
+        catch (OperationCanceledException)
+        {
+            logger.LogInformation(".NET SDK validation cancelled by user");
+            throw; // Re-throw to propagate cancellation
         }
 
         if (string.IsNullOrWhiteSpace(installedVersion))

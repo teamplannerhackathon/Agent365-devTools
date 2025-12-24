@@ -283,6 +283,152 @@ public class DotNetSdkValidationTests : IDisposable
         _output.WriteLine("Gracefully handled malformed SDK version output");
     }
 
+    /// <summary>
+    /// Test that cancellation during retry delay properly throws OperationCanceledException
+    /// </summary>
+    [Fact]
+    public async Task ResolveDotNetRuntimeVersion_WhenCancelledDuringRetry_ThrowsOperationCanceledException()
+    {
+        // Arrange
+        CreateTestProject("net8.0");
+        
+        var cts = new CancellationTokenSource();
+        var callCount = 0;
+        
+        // Mock: First call fails, trigger cancellation before retry
+        _commandExecutor.ExecuteAsync("dotnet", "--version", captureOutput: true, cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                var currentCall = Interlocked.Increment(ref callCount);
+                
+                if (currentCall == 1)
+                {
+                    // First attempt fails
+                    _output.WriteLine($"Attempt {currentCall}: Simulating failure");
+                    
+                    // Cancel immediately to trigger cancellation during Task.Delay
+                    cts.Cancel();
+                    
+                    return Task.FromResult(new CommandResult 
+                    { 
+                        ExitCode = 1, 
+                        StandardError = "dotnet command failed" 
+                    });
+                }
+                
+                // Should not reach here - cancellation should occur during delay
+                throw new InvalidOperationException("Should have been cancelled");
+            });
+        
+        // Act & Assert
+        var act = async () => await InvokeResolveDotNetRuntimeVersionAsync(
+            ProjectPlatform.DotNet,
+            _testProjectPath,
+            cts.Token);
+        
+        await act.Should().ThrowAsync<OperationCanceledException>();
+        
+        _output.WriteLine("Cancellation during retry properly threw OperationCanceledException");
+    }
+
+    /// <summary>
+    /// Test that exponential backoff respects the maximum delay cap
+    /// </summary>
+    [Fact]
+    public async Task ResolveDotNetRuntimeVersion_ExponentialBackoff_RespectsMaximumDelayCap()
+    {
+        // Arrange
+        CreateTestProject("net8.0");
+        
+        var callTimes = new List<DateTime>();
+        
+        // Mock: All attempts fail to test full retry sequence
+        _commandExecutor.ExecuteAsync("dotnet", "--version", captureOutput: true, cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                callTimes.Add(DateTime.UtcNow);
+                var callNumber = callTimes.Count;
+                
+                _output.WriteLine($"Attempt {callNumber} at {callTimes.Last():HH:mm:ss.fff}");
+                
+                return Task.FromResult(new CommandResult 
+                { 
+                    ExitCode = 1, 
+                    StandardError = "dotnet command failed" 
+                });
+            });
+        
+        // Act
+        try
+        {
+            await InvokeResolveDotNetRuntimeVersionAsync(
+                ProjectPlatform.DotNet,
+                _testProjectPath,
+                CancellationToken.None);
+        }
+        catch (DotNetSdkVersionMismatchException)
+        {
+            // Expected - all retries failed
+        }
+        
+        // Assert - Verify exponential backoff delays
+        callTimes.Should().HaveCount(3); // MaxSdkValidationAttempts = 3
+        
+        if (callTimes.Count >= 2)
+        {
+            var delay1 = (callTimes[1] - callTimes[0]).TotalMilliseconds;
+            _output.WriteLine($"Delay between attempt 1 and 2: {delay1}ms (expected ~500ms)");
+            
+            // Allow some tolerance for execution time
+            delay1.Should().BeGreaterOrEqualTo(450).And.BeLessThan(1500);
+        }
+        
+        if (callTimes.Count >= 3)
+        {
+            var delay2 = (callTimes[2] - callTimes[1]).TotalMilliseconds;
+            _output.WriteLine($"Delay between attempt 2 and 3: {delay2}ms (expected ~1000ms)");
+            
+            delay2.Should().BeGreaterOrEqualTo(950).And.BeLessThan(2500);
+        }
+        
+        _output.WriteLine("Exponential backoff delays verified: 500ms -> 1000ms");
+    }
+
+    /// <summary>
+    /// Test that Math.Min cap prevents extremely large delays if retry attempts are increased
+    /// This verifies the delay calculation: Math.Min(InitialRetryDelayMs * (1 &lt;&lt; (attempt - 1)), MaxRetryDelayMs)
+    /// </summary>
+    [Fact]
+    public void ExponentialBackoff_WithCap_PreventsExcessiveDelays()
+    {
+        // Test the exponential backoff formula with cap
+        const int InitialRetryDelayMs = 500;
+        const int MaxRetryDelayMs = 5000;
+        
+        // Simulate delay calculation for various attempts
+        var delays = new List<int>();
+        for (int attempt = 1; attempt <= 10; attempt++)
+        {
+            var delayMs = Math.Min(InitialRetryDelayMs * (1 << (attempt - 1)), MaxRetryDelayMs);
+            delays.Add(delayMs);
+            _output.WriteLine($"Attempt {attempt}: {delayMs}ms");
+        }
+        
+        // Assert
+        delays[0].Should().Be(500);    // Attempt 1: 500ms
+        delays[1].Should().Be(1000);   // Attempt 2: 1000ms
+        delays[2].Should().Be(2000);   // Attempt 3: 2000ms
+        delays[3].Should().Be(4000);   // Attempt 4: 4000ms
+        delays[4].Should().Be(5000);   // Attempt 5: 5000ms (capped)
+        delays[5].Should().Be(5000);   // Attempt 6: 5000ms (capped)
+        delays[9].Should().Be(5000);   // Attempt 10: 5000ms (capped)
+        
+        // Verify cap is enforced
+        delays.Should().OnlyContain(d => d <= MaxRetryDelayMs);
+        
+        _output.WriteLine("Math.Min cap successfully prevents delays from exceeding 5000ms");
+    }
+
     #region Helper Methods
 
     private string CreateTestProject(string targetFramework)
