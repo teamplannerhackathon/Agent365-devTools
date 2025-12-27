@@ -1,6 +1,9 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Agents.A365.DevTools.Cli.Helpers;
@@ -15,6 +18,13 @@ public sealed class MicrosoftGraphTokenProvider : IMicrosoftGraphTokenProvider
 {
     private readonly CommandExecutor _executor;
     private readonly ILogger<MicrosoftGraphTokenProvider> _logger;
+
+    // Cache tokens per (tenant + clientId + scopes) for the lifetime of this CLI process.
+    // This reduces repeated Connect-MgGraph prompts in setup flows.
+    private readonly ConcurrentDictionary<string, CachedToken> _tokenCache = new();
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = new();
+
+private sealed record CachedToken(string AccessToken, DateTimeOffset ExpiresOnUtc);
 
     public MicrosoftGraphTokenProvider(
         CommandExecutor executor,
@@ -31,10 +41,6 @@ public sealed class MicrosoftGraphTokenProvider : IMicrosoftGraphTokenProvider
         string? clientAppId = null,
         CancellationToken ct = default)
     {
-        _logger.LogInformation(
-            "Acquiring Microsoft Graph delegated access token via PowerShell (Device Code: {UseDeviceCode})",
-            useDeviceCode);
-
         var validatedScopes = ValidateAndPrepareScopes(scopes);
         ValidateTenantId(tenantId);
         
@@ -43,10 +49,60 @@ public sealed class MicrosoftGraphTokenProvider : IMicrosoftGraphTokenProvider
             ValidateClientAppId(clientAppId);
         }
 
-        var script = BuildPowerShellScript(tenantId, validatedScopes, useDeviceCode, clientAppId);
-        var result = await ExecuteWithFallbackAsync(script, useDeviceCode, ct);
+        var cacheKey = MakeCacheKey(tenantId, validatedScopes, clientAppId);
 
-        return ProcessResult(result);
+        // Fast path: cached + not expiring soon
+        if (_tokenCache.TryGetValue(cacheKey, out var cached) &&
+            cached.ExpiresOnUtc > DateTimeOffset.UtcNow.AddMinutes(5) &&
+            !string.IsNullOrWhiteSpace(cached.AccessToken))
+        {
+            _logger.LogDebug("Reusing cached Graph token for key {Key} expiring at {Exp}",
+                cacheKey, cached.ExpiresOnUtc);
+            return cached.AccessToken;
+        }
+
+        // Single-flight: only one PowerShell auth per key at a time
+        var gate = _locks.GetOrAdd(cacheKey, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(ct);
+        try
+        {
+            // Re-check inside lock
+            if (_tokenCache.TryGetValue(cacheKey, out cached) &&
+                cached.ExpiresOnUtc > DateTimeOffset.UtcNow.AddMinutes(5) &&
+                !string.IsNullOrWhiteSpace(cached.AccessToken))
+            {
+                _logger.LogDebug("Reusing cached Graph token (post-lock) for key {Key} expiring at {Exp}",
+                    cacheKey, cached.ExpiresOnUtc);
+                return cached.AccessToken;
+            }
+
+            _logger.LogInformation(
+                "Acquiring Microsoft Graph delegated access token via PowerShell (Device Code: {UseDeviceCode})",
+                useDeviceCode);
+
+            var script = BuildPowerShellScript(tenantId, validatedScopes, useDeviceCode, clientAppId);
+            var result = await ExecuteWithFallbackAsync(script, useDeviceCode, ct);
+            var token = ProcessResult(result);
+
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return null;
+            }
+
+            // Cache expiry from JWT exp; if parsing fails, cache short (10 min) to still reduce spam
+            if (!TryGetJwtExpiryUtc(token, out var expUtc))
+            {
+                expUtc = DateTimeOffset.UtcNow.AddMinutes(10);
+                _logger.LogDebug("Could not parse JWT exp; caching token for a short duration until {Exp}", expUtc);
+            }
+
+            _tokenCache[cacheKey] = new CachedToken(token, expUtc);
+            return token;
+        }
+        finally
+        {
+            gate.Release();
+        }
     }
 
     private string[] ValidateAndPrepareScopes(IEnumerable<string> scopes)
@@ -248,5 +304,55 @@ public sealed class MicrosoftGraphTokenProvider : IMicrosoftGraphTokenProvider
         // Header typically starts with "eyJ" when base64-decoded
         return token.StartsWith("eyJ", StringComparison.Ordinal) &&
                token.Count(c => c == '.') == 2;
+    }
+
+    private static string MakeCacheKey(string tenantId, IEnumerable<string> scopes, string? clientAppId)
+    {
+        var scopeKey = string.Join(" ", scopes
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Select(s => s.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(s => s, StringComparer.OrdinalIgnoreCase));
+
+        return $"{tenantId}::{clientAppId ?? ""}::{scopeKey}";
+    }
+
+    private static bool TryGetJwtExpiryUtc(string jwt, out DateTimeOffset expiresOnUtc)
+    {
+        expiresOnUtc = default;
+
+        if (string.IsNullOrWhiteSpace(jwt)) return false;
+        var parts = jwt.Split('.');
+        if (parts.Length != 3) return false;
+
+        try
+        {
+            var payloadJson = Encoding.UTF8.GetString(Base64UrlDecode(parts[1]));
+            using var doc = JsonDocument.Parse(payloadJson);
+
+            if (!doc.RootElement.TryGetProperty("exp", out var expEl)) return false;
+            if (expEl.ValueKind != JsonValueKind.Number) return false;
+
+            // exp is seconds since Unix epoch
+            var expSeconds = expEl.GetInt64();
+            expiresOnUtc = DateTimeOffset.FromUnixTimeSeconds(expSeconds);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static byte[] Base64UrlDecode(string input)
+    {
+        // Base64Url decode with padding fix
+        var s = input.Replace('-', '+').Replace('_', '/');
+        switch (s.Length % 4)
+        {
+            case 2: s += "=="; break;
+            case 3: s += "="; break;
+        }
+        return Convert.FromBase64String(s);
     }
 }
