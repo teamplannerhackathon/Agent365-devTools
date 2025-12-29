@@ -275,6 +275,7 @@ public class CleanupCommandTests
             TenantId = "test-tenant-id",
             SubscriptionId = "test-subscription-id",
             ResourceGroup = "test-rg",
+            Location = "eastus",
             WebAppName = "test-web-app",
             AppServicePlanName = "test-app-service-plan",
             AgentBlueprintId = "test-blueprint-id",
@@ -393,5 +394,140 @@ public class CleanupCommandTests
 
         command.Should().NotBeNull();
         command.Name.Should().Be("cleanup");
+    }
+
+    /// <summary>
+    /// Verifies that blueprint cleanup command has the --endpoint-only option.
+    /// </summary>
+    [Fact]
+    public void CleanupBlueprint_ShouldHaveEndpointOnlyOption()
+    {
+        // Arrange & Act
+        var command = CleanupCommand.CreateCommand(_mockLogger, _mockConfigService, _mockBotConfigurator, _mockExecutor, _agentBlueprintService, _mockConfirmationProvider);
+        var blueprintCommand = command.Subcommands.First(sc => sc.Name == "blueprint");
+
+        // Assert
+        var optionNames = blueprintCommand.Options.Select(opt => opt.Name).ToList();
+        Assert.Contains("endpoint-only", optionNames);
+    }
+
+    /// <summary>
+    /// Verifies that blueprint cleanup with --endpoint-only flag only deletes the messaging endpoint
+    /// and preserves the blueprint application.
+    /// </summary>
+    [Fact]
+    public async Task CleanupBlueprint_WithEndpointOnly_ShouldOnlyDeleteMessagingEndpoint()
+    {
+        // Arrange
+        var config = CreateValidConfig();
+        _mockConfigService.LoadAsync(Arg.Any<string>(), Arg.Any<string>()).Returns(config);
+        _mockBotConfigurator.DeleteEndpointWithAgentBlueprintAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>())
+            .Returns(true);
+        
+        var command = CleanupCommand.CreateCommand(_mockLogger, _mockConfigService, _mockBotConfigurator, _mockExecutor, _agentBlueprintService, _mockConfirmationProvider);
+        var args = new[] { "cleanup", "blueprint", "--endpoint-only", "--config", "test.json" };
+
+        // Simulate user confirmation with y
+        var originalIn = Console.In;
+        try
+        {
+            Console.SetIn(new StringReader("y\n"));
+
+            // Act
+            var result = await command.InvokeAsync(args);
+
+            // Assert
+            Assert.Equal(0, result);
+            
+            // Verify endpoint deletion was called
+            await _mockBotConfigurator.Received(1).DeleteEndpointWithAgentBlueprintAsync(
+                Arg.Any<string>(), 
+                config.Location, 
+                config.AgentBlueprintId!);
+            
+            // Verify blueprint deletion was NOT called (no az ad app delete command)
+            await _mockExecutor.DidNotReceive().ExecuteAsync(
+                "az",
+                Arg.Is<string>(args => args.Contains("ad app delete")),
+                Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+        }
+        finally
+        {
+            Console.SetIn(originalIn);
+        }
+    }
+
+    /// <summary>
+    /// TEST: Verifies that blueprint cleanup with --endpoint-only flag shows appropriate error
+    /// when blueprint ID is missing.
+    /// </summary>
+    [Fact]
+    public async Task CleanupBlueprint_WithEndpointOnlyAndNoBlueprintId_ShouldLogError()
+    {
+        // Arrange
+        var config = new Agent365Config
+        {
+            TenantId = "test-tenant-id",
+            SubscriptionId = "test-subscription-id",
+            ResourceGroup = "test-rg",
+            Location = "eastus",
+            WebAppName = "test-web-app",
+            AppServicePlanName = "test-app-service-plan",
+            AgenticAppId = "test-identity-id",
+            AgenticUserId = "test-user-id",
+            AgentDescription = "test-agent-description"
+            // No AgentBlueprintId set
+        };
+        _mockConfigService.LoadAsync(Arg.Any<string>(), Arg.Any<string>()).Returns(config);
+        
+        var command = CleanupCommand.CreateCommand(_mockLogger, _mockConfigService, _mockBotConfigurator, _mockExecutor, _agentBlueprintService, _mockConfirmationProvider);
+        var args = new[] { "cleanup", "blueprint", "--endpoint-only", "--config", "test.json" };
+
+        // Act
+        var result = await command.InvokeAsync(args);
+
+        // Assert
+        Assert.Equal(0, result); // Command completes but doesn't delete anything
+        
+        // Verify no deletion operations were called
+        await _mockBotConfigurator.DidNotReceive().DeleteEndpointWithAgentBlueprintAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>());
+    }
+
+    /// <summary>
+    /// TEST: Verifies that blueprint cleanup with --endpoint-only flag shows appropriate info
+    /// when no endpoint exists to clean up.
+    /// </summary>
+    [Fact]
+    public async Task CleanupBlueprint_WithEndpointOnlyAndNoBotName_ShouldLogInfo()
+    {
+        // Arrange
+        var config = new Agent365Config
+        {
+            TenantId = "test-tenant-id",
+            SubscriptionId = "test-subscription-id",
+            ResourceGroup = "test-rg",
+            Location = "eastus",
+            WebAppName = string.Empty, // No WebAppName means no BotName
+            AppServicePlanName = "test-app-service-plan",
+            AgentBlueprintId = "test-blueprint-id",
+            AgenticAppId = "test-identity-id",
+            AgenticUserId = "test-user-id",
+            AgentDescription = "test-agent-description"
+        };
+        _mockConfigService.LoadAsync(Arg.Any<string>(), Arg.Any<string>()).Returns(config);
+        
+        var command = CleanupCommand.CreateCommand(_mockLogger, _mockConfigService, _mockBotConfigurator, _mockExecutor, _agentBlueprintService, _mockConfirmationProvider);
+        var args = new[] { "cleanup", "blueprint", "--endpoint-only", "--config", "test.json" };
+
+        // Act
+        var result = await command.InvokeAsync(args);
+
+        // Assert
+        Assert.Equal(0, result);
+        
+        // Verify no deletion operations were called
+        await _mockBotConfigurator.DidNotReceive().DeleteEndpointWithAgentBlueprintAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>());
     }
 }

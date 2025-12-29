@@ -71,15 +71,18 @@ public class CleanupCommand
             new[] { "--verbose", "-v" },
             description: "Enable verbose logging");
 
+        var endpointOnlyOption = new Option<bool>(
+            new[] { "--endpoint-only" },
+            description: "Delete only the messaging endpoint, keep the blueprint application");
+
         command.AddOption(configOption);
         command.AddOption(verboseOption);
+        command.AddOption(endpointOnlyOption);
 
-        command.SetHandler(async (configFile, verbose) =>
+        command.SetHandler(async (configFile, verbose, endpointOnly) =>
         {
             try
             {
-                logger.LogInformation("Starting blueprint cleanup...");
-                
                 var config = await LoadConfigAsync(configFile, logger, configService);
                 if (config == null) return;
                 
@@ -88,6 +91,16 @@ public class CleanupCommand
                 {
                     agentBlueprintService.CustomClientAppId = config.ClientAppId;
                 }
+
+                // If endpoint-only mode, only delete the messaging endpoint
+                if (endpointOnly)
+                {
+                    await ExecuteEndpointOnlyCleanupAsync(logger, config, botConfigurator);
+                    return;
+                }
+
+                // Full blueprint cleanup (original behavior)
+                logger.LogInformation("Starting blueprint cleanup...");
 
                 // Check if there's actually a blueprint to clean up
                 if (string.IsNullOrEmpty(config.AgentBlueprintId))
@@ -167,7 +180,7 @@ public class CleanupCommand
             {
                 logger.LogError(ex, "Blueprint cleanup failed");
             }
-        }, configOption, verboseOption);
+        }, configOption, verboseOption, endpointOnlyOption);
 
         return command;
     }
@@ -661,6 +674,68 @@ public class CleanupCommand
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// Executes endpoint-only cleanup - deletes the messaging endpoint while preserving the blueprint application
+    /// </summary>
+    private static async Task ExecuteEndpointOnlyCleanupAsync(
+        ILogger<CleanupCommand> logger,
+        Agent365Config config,
+        IBotConfigurator botConfigurator)
+    {
+        logger.LogInformation("Starting endpoint-only cleanup...");
+        
+        // Check if there's actually an endpoint to clean up
+        if (string.IsNullOrEmpty(config.BotName))
+        {
+            logger.LogInformation("No messaging endpoint found to clean up");
+            return;
+        }
+
+        // Check if blueprint ID exists (required for endpoint deletion)
+        if (string.IsNullOrEmpty(config.AgentBlueprintId))
+        {
+            logger.LogError("Agent Blueprint ID not found. Blueprint ID is required for endpoint deletion.");
+            logger.LogInformation("Please ensure blueprint is configured before attempting endpoint cleanup.");
+            return;
+        }
+
+        logger.LogInformation("");
+        logger.LogInformation("Endpoint Cleanup Preview:");
+        logger.LogInformation("============================");
+        logger.LogInformation("Will delete messaging endpoint:");
+        logger.LogInformation("  Endpoint Name: {BotName}", config.BotName);
+        logger.LogInformation("  Location: {Location}", config.Location);
+        logger.LogInformation("");
+
+        Console.Write("Continue with endpoint cleanup? (y/N): ");
+        var response = Console.ReadLine()?.Trim().ToLowerInvariant();
+        if (response != "y" && response != "yes")
+        {
+            logger.LogInformation("Cleanup cancelled by user");
+            return;
+        }
+
+        // Delete messaging endpoint
+        logger.LogInformation("Deleting messaging endpoint registration...");
+        var endpointName = EndpointHelper.GetEndpointName(config.BotName);
+
+        var endpointDeleted = await botConfigurator.DeleteEndpointWithAgentBlueprintAsync(
+            endpointName,
+            config.Location,
+            config.AgentBlueprintId);
+
+        if (!endpointDeleted)
+        {
+            logger.LogWarning("Failed to delete messaging endpoint");
+            return;
+        }
+
+        logger.LogInformation("Messaging endpoint deleted successfully");
+        logger.LogInformation("");
+        logger.LogInformation("Endpoint cleanup completed successfully!");
+        logger.LogInformation("");
     }
 
     private static async Task<Agent365Config?> LoadConfigAsync(
