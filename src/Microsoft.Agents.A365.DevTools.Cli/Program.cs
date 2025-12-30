@@ -156,7 +156,7 @@ class Program
                 // Always use Trace level for file logging to capture all diagnostic information
                 // This ensures comprehensive logs for debugging, regardless of console verbosity
                 builder.Services.AddSingleton<ILoggerProvider>(provider =>
-                    new FileLoggerProvider(logFilePath, LogLevel.Trace));
+                    new FileLoggerProvider(logFilePath));
             }
         });
 

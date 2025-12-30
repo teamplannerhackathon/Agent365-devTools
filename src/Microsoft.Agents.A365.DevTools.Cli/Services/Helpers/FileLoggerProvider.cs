@@ -18,10 +18,11 @@ public sealed class FileLoggerProvider : ILoggerProvider
     private readonly ConcurrentDictionary<string, FileLogger> _loggers = new();
     private readonly object _lock = new();
 
-    public FileLoggerProvider(string filePath, LogLevel minimumLevel = LogLevel.Trace)
+    public FileLoggerProvider(string filePath)
     {
         _filePath = filePath;
         // Always use Trace level for file logging to capture all diagnostic information
+        // This ensures comprehensive logs for debugging, regardless of console verbosity
         _minimumLevel = LogLevel.Trace;
 
         // Ensure directory exists
