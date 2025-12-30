@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
+using Microsoft.Agents.A365.DevTools.Cli.Services;
 using Microsoft.Extensions.Logging;
 
 namespace Microsoft.Agents.A365.DevTools.Cli.Exceptions;
@@ -42,7 +43,7 @@ public static class ExceptionHandler
                 Console.Error.WriteLine(line);
             }
         }
-        
+
         // Include log file path for troubleshooting
         if (!string.IsNullOrEmpty(logFilePath))
         {

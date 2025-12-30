@@ -106,7 +106,8 @@ class Program
                 {
                     if (exception is Agent365Exception myEx)
                     {
-                        ExceptionHandler.HandleAgent365Exception(myEx, logFilePath: logFilePath);
+                        var logFile = ConfigService.GetCommandLogPath(DetectCommandName(args)); 
+                        ExceptionHandler.HandleAgent365Exception(myEx, logFilePath: logFile);
                         context.ExitCode = myEx.ExitCode;
                     }
                     else
