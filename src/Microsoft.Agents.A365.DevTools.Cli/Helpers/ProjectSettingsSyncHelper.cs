@@ -21,7 +21,8 @@ public static class ProjectSettingsSyncHelper
 {
     private const string DEFAULT_AUTHORITY_ENDPOINT = "https://login.microsoftonline.com";
     private const string DEFAULT_USER_AUTHORIZATION_SCOPE = "https://graph.microsoft.com/.default";
-    private const string DEFAULT_SERVICE_CONNECTION_SCOPE = "https://api.botframework.com/.default";
+    // Messaging Bot API Application GUID
+    private const string DEFAULT_SERVICE_CONNECTION_SCOPE = $"{ConfigConstants.MessagingBotApiAppId}/.default";
 
     public static async Task ExecuteAsync(
         string a365ConfigPath,
@@ -60,7 +61,7 @@ public static class ProjectSettingsSyncHelper
                     logger.LogInformation("Created: {Path}", appsettings);
                 }
 
-                await UpdateDotnetAppsettingsAsync(appsettings, pkgConfig);
+                await UpdateDotnetAppsettingsAsync(appsettings, pkgConfig, logger);
                 logger.LogInformation("Updated: {Path}", appsettings);
                 break;
             }
@@ -362,7 +363,8 @@ public static class ProjectSettingsSyncHelper
     // ---------------------------
     private static async Task UpdateDotnetAppsettingsAsync(
         string appsettingsPath,
-        Agent365Config pkgConfig)
+        Agent365Config pkgConfig,
+        ILogger logger)
     {
         var text = await File.ReadAllTextAsync(appsettingsPath);
         if (string.IsNullOrWhiteSpace(text)) text = "{ }";
@@ -430,7 +432,12 @@ public static class ProjectSettingsSyncHelper
 
         if (!string.IsNullOrWhiteSpace(pkgConfig.AgentBlueprintClientSecret))
         {
-            svcSettings["ClientSecret"] = pkgConfig.AgentBlueprintClientSecret;
+            // Decrypt the secret before writing to appsettings.json (must be plaintext for runtime use)
+            var plaintextSecret = SecretProtectionHelper.UnprotectSecret(
+                pkgConfig.AgentBlueprintClientSecret,
+                pkgConfig.AgentBlueprintClientSecretProtected,
+                logger);
+            svcSettings["ClientSecret"] = plaintextSecret;
         }
 
         if (!string.IsNullOrWhiteSpace(pkgConfig.AgentBlueprintId))

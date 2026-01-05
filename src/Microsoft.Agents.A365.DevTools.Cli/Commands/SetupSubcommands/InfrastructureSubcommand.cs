@@ -20,6 +20,11 @@ namespace Microsoft.Agents.A365.DevTools.Cli.Commands.SetupSubcommands;
 /// </summary>
 public static class InfrastructureSubcommand
 {
+    // SDK validation retry configuration
+    private const int MaxSdkValidationAttempts = 3;
+    private const int InitialRetryDelayMs = 500;
+    private const int MaxRetryDelayMs = 5000; // Cap exponential backoff at 5 seconds
+    
     /// <summary>
     /// Validates infrastructure prerequisites without performing any actions.
     /// Includes validation of App Service Plan SKU and provides recommendations.
@@ -141,7 +146,7 @@ public static class InfrastructureSubcommand
                 if (!string.IsNullOrWhiteSpace(dryRunConfig.DeploymentProjectPath))
                 {
                     var detectedPlatform = platformDetector.Detect(dryRunConfig.DeploymentProjectPath);
-                    var detectedRuntime = GetRuntimeForPlatform(detectedPlatform);
+                    var detectedRuntime = await GetRuntimeForPlatformAsync(detectedPlatform, dryRunConfig.DeploymentProjectPath, executor, logger);
                     logger.LogInformation("  - Detected Platform: {Platform}", detectedPlatform);
                     logger.LogInformation("  - Runtime: {Runtime}", detectedRuntime);
                 }
@@ -301,6 +306,7 @@ public static class InfrastructureSubcommand
             planSku,
             webAppName,
             generatedConfigPath,
+            deploymentProjectPath,
             platform,
             logger,
             needDeployment,
@@ -411,6 +417,7 @@ public static class InfrastructureSubcommand
         string? planSku,
         string webAppName,
         string generatedConfigPath,
+        string deploymentProjectPath,
         Models.ProjectPlatform platform,
         ILogger logger,
         bool needDeployment,
@@ -496,7 +503,7 @@ public static class InfrastructureSubcommand
             var webShow = await executor.ExecuteAsync("az", $"webapp show -g {resourceGroup} -n {webAppName} --subscription {subscriptionId}", captureOutput: true, suppressErrorLogging: true);
             if (!webShow.Success)
             {
-                var runtime = GetRuntimeForPlatform(platform);
+                var runtime = await GetRuntimeForPlatformAsync(platform, deploymentProjectPath, executor, logger, cancellationToken);
                 logger.LogInformation("Creating web app {App} with runtime {Runtime}", webAppName, runtime);
                 var createResult = await executor.ExecuteAsync("az", $"webapp create -g {resourceGroup} -p {planName} -n {webAppName} --runtime \"{runtime}\" --subscription {subscriptionId}", captureOutput: true, suppressErrorLogging: true);
                 if (!createResult.Success)
@@ -552,7 +559,7 @@ public static class InfrastructureSubcommand
             }
             else
             {
-                var linuxFxVersion = GetLinuxFxVersionForPlatform(platform);
+                var linuxFxVersion = await GetLinuxFxVersionForPlatformAsync(platform, deploymentProjectPath, executor, logger, cancellationToken);
                 logger.LogInformation("Web app already exists: {App} (skipping creation)", webAppName);
                 logger.LogInformation("Configuring web app to use {Platform} runtime ({LinuxFxVersion})...", platform, linuxFxVersion);
                 await AzWarnAsync(executor, logger, $"webapp config set -g {resourceGroup} -n {webAppName} --linux-fx-version \"{linuxFxVersion}\" --subscription {subscriptionId}", "Configure runtime");
@@ -680,7 +687,8 @@ public static class InfrastructureSubcommand
             else if (result.StandardError.Contains("AuthorizationFailed", StringComparison.OrdinalIgnoreCase))
             {
                 var exception = new AzureResourceException(description, string.Empty, result.StandardError, true);
-                ExceptionHandler.HandleAgent365Exception(exception);
+                var logFilePath = ConfigService.GetCommandLogPath(CommandNames.Setup);
+                ExceptionHandler.HandleAgent365Exception(exception, logFilePath: logFilePath);
             }
             else
             {
@@ -818,8 +826,19 @@ public static class InfrastructureSubcommand
     /// Get the Azure Web App runtime string based on the detected platform
     /// (from A365SetupRunner GetRuntimeForPlatform method)
     /// </summary>
-    private static string GetRuntimeForPlatform(Models.ProjectPlatform platform)
+    private static async Task<string> GetRuntimeForPlatformAsync(
+        Models.ProjectPlatform platform, 
+        string? deploymentProjectPath, 
+        CommandExecutor executor, 
+        ILogger logger,
+        CancellationToken cancellationToken = default)
     {
+        var dotnetVersion = await ResolveDotNetRuntimeVersionAsync(platform, deploymentProjectPath, executor, logger, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(dotnetVersion))
+        {
+            return $"DOTNETCORE:{dotnetVersion}";
+        }
+
         return platform switch
         {
             Models.ProjectPlatform.Python => "PYTHON:3.11",
@@ -833,8 +852,19 @@ public static class InfrastructureSubcommand
     /// Get the Azure Web App Linux FX Version string based on the detected platform
     /// (from A365SetupRunner GetLinuxFxVersionForPlatform method)
     /// </summary>
-    private static string GetLinuxFxVersionForPlatform(Models.ProjectPlatform platform)
+    private static async Task<string> GetLinuxFxVersionForPlatformAsync(
+        Models.ProjectPlatform platform, 
+        string? deploymentProjectPath, 
+        CommandExecutor executor, 
+        ILogger logger,
+        CancellationToken cancellationToken = default)
     {
+        var dotnetVersion = await ResolveDotNetRuntimeVersionAsync(platform, deploymentProjectPath, executor, logger, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(dotnetVersion))
+        {
+            return $"DOTNETCORE:{dotnetVersion}";
+        }
+
         return platform switch
         {
             Models.ProjectPlatform.Python => "PYTHON|3.11",
@@ -842,6 +872,121 @@ public static class InfrastructureSubcommand
             Models.ProjectPlatform.DotNet => "DOTNETCORE|8.0",
             _ => "DOTNETCORE|8.0" // Default fallback
         };
+    }
+
+    private static async Task<string?> ResolveDotNetRuntimeVersionAsync(
+        Models.ProjectPlatform platform,
+        string? deploymentProjectPath,
+        CommandExecutor executor,
+        ILogger logger,
+        CancellationToken cancellationToken = default)
+    {
+        if (platform != Models.ProjectPlatform.DotNet ||
+            string.IsNullOrWhiteSpace(deploymentProjectPath))
+        {
+            return null;
+        }
+
+        var csproj = Directory
+            .GetFiles(deploymentProjectPath, "*.csproj", SearchOption.TopDirectoryOnly)
+            .FirstOrDefault();
+        if (csproj == null)
+        {
+            logger.LogWarning("No .csproj file found in deploymentProjectPath: {Path}", deploymentProjectPath);
+            return null;
+        }
+
+        var version = DotNetProjectHelper.DetectTargetRuntimeVersion(csproj, logger);
+        if (string.IsNullOrWhiteSpace(version))
+        {
+            logger.LogWarning("Unable to detect TargetFramework version from {Project}", csproj);
+            return null;
+        }
+
+        // Validate local SDK with retry logic (exponential backoff) to handle intermittent process spawn failures
+        string? installedVersion = null;
+        
+        try
+        {
+            for (int attempt = 1; attempt <= MaxSdkValidationAttempts; attempt++)
+            {
+                var sdkResult = await executor.ExecuteAsync("dotnet", "--version", captureOutput: true, cancellationToken: cancellationToken);
+                
+                if (sdkResult.Success && !string.IsNullOrWhiteSpace(sdkResult.StandardOutput))
+                {
+                    installedVersion = sdkResult.StandardOutput.Trim();
+                    break; // Success!
+                }
+                
+                if (attempt < MaxSdkValidationAttempts)
+                {
+                    // Exponential backoff with cap: 500ms, 1000ms, 2000ms (capped at MaxRetryDelayMs)
+                    var delayMs = Math.Min(InitialRetryDelayMs * (1 << (attempt - 1)), MaxRetryDelayMs);
+                    logger.LogWarning(
+                        "dotnet --version check failed (attempt {Attempt}/{MaxAttempts}). Retrying in {DelayMs}ms...", 
+                        attempt, MaxSdkValidationAttempts, delayMs);
+                    await Task.Delay(delayMs, cancellationToken);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            logger.LogInformation(".NET SDK validation cancelled by user");
+            throw; // Re-throw to propagate cancellation
+        }
+
+        if (string.IsNullOrWhiteSpace(installedVersion))
+        {
+            throw new DotNetSdkVersionMismatchException(
+                requiredVersion: version,
+                installedVersion: installedVersion,
+                projectFilePath: csproj);
+        }
+
+        // Parse installed SDK version (e.g., "9.0.308" -> major: 9)
+        // Validate format: must have at least major.minor (e.g., "9.0")
+        var installedParts = installedVersion.Split('.');
+        if (installedParts.Length < 2 ||
+            !int.TryParse(installedParts[0], out var installedMajor))
+        {
+            logger.LogWarning("Unable to parse installed SDK version: {Version}. Expected format: major.minor.patch (e.g., 9.0.308)", installedVersion);
+            // Continue anyway - dotnet build will fail if truly incompatible
+            return version;
+        }
+
+        // Parse target framework version (e.g., "8.0" -> major: 8)
+        // Validate format: must have at least major.minor (e.g., "8.0")
+        var targetParts = version.Split('.');
+        if (targetParts.Length < 2 ||
+            !int.TryParse(targetParts[0], out var targetMajor))
+        {
+            logger.LogWarning("Unable to parse target framework version: {Version}. Expected format: major.minor (e.g., net8.0)", version);
+            return version;
+        }
+
+        // Check if installed SDK can build the target framework
+        // .NET SDK supports building projects targeting the same or lower major version
+        // E.g., .NET 9 SDK can build .NET 8, 7, 6 projects (forward compatibility)
+        // Minor versions are not relevant for SDK compatibility
+        if (installedMajor < targetMajor)
+        {
+            // Installed SDK is older than target framework - this is a real problem
+            throw new DotNetSdkVersionMismatchException(
+                requiredVersion: version,
+                installedVersion: installedVersion,
+                projectFilePath: csproj);
+        }
+
+        // Installed SDK is same or newer - this is fine!
+        if (installedMajor > targetMajor)
+        {
+            logger.LogInformation(
+                ".NET {InstalledVersion} SDK detected (project targets .NET {TargetVersion}) - forward compatibility enabled",
+                installedVersion,
+                version);
+        }
+
+        return version; // e.g. "8.0", "9.0"
     }
 
     private static string Short(string? text)

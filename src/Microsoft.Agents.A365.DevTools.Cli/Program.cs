@@ -32,7 +32,7 @@ class Program
 
         try
         {
-            // Log startup info (debug level - not shown to users by default)
+            // Log startup info (debug level - not shown to users by default on console, but always in log file)
             startupLogger.LogDebug("==========================================================");
             startupLogger.LogDebug("Agent 365 CLI - Command: {Command}", commandName);
             startupLogger.LogDebug("Version: {Version}", GetDisplayVersion());
@@ -70,30 +70,33 @@ class Program
             var deploymentService = serviceProvider.GetRequiredService<DeploymentService>();
             var botConfigurator = serviceProvider.GetRequiredService<IBotConfigurator>();
             var graphApiService = serviceProvider.GetRequiredService<GraphApiService>();
+            var agentPublishService = serviceProvider.GetRequiredService<AgentPublishService>();
+            var agentBlueprintService = serviceProvider.GetRequiredService<AgentBlueprintService>();
             var webAppCreator = serviceProvider.GetRequiredService<AzureWebAppCreator>();
             var platformDetector = serviceProvider.GetRequiredService<PlatformDetector>();
             var processService = serviceProvider.GetRequiredService<IProcessService>();
             var clientAppValidator = serviceProvider.GetRequiredService<IClientAppValidator>();
 
             // Add commands
-            rootCommand.AddCommand(DevelopCommand.CreateCommand(developLogger, configService, executor, authService, graphApiService, processService));
+            rootCommand.AddCommand(DevelopCommand.CreateCommand(developLogger, configService, executor, authService, graphApiService, agentBlueprintService, processService));
             rootCommand.AddCommand(DevelopMcpCommand.CreateCommand(developLogger, toolingService));
             rootCommand.AddCommand(SetupCommand.CreateCommand(setupLogger, configService, executor,
-                deploymentService, botConfigurator, azureValidator, webAppCreator, platformDetector, graphApiService, clientAppValidator));
+                deploymentService, botConfigurator, azureValidator, webAppCreator, platformDetector, graphApiService, agentBlueprintService, clientAppValidator));
             rootCommand.AddCommand(CreateInstanceCommand.CreateCommand(createInstanceLogger, configService, executor,
                 botConfigurator, graphApiService, azureValidator));
             rootCommand.AddCommand(DeployCommand.CreateCommand(deployLogger, configService, executor,
-                deploymentService, azureValidator, graphApiService));
+                deploymentService, azureValidator, graphApiService, agentBlueprintService));
 
             // Register ConfigCommand
             var configLoggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
             var configLogger = configLoggerFactory.CreateLogger("ConfigCommand");
             var wizardService = serviceProvider.GetRequiredService<IConfigurationWizardService>();
             var manifestTemplateService = serviceProvider.GetRequiredService<ManifestTemplateService>();
+            var confirmationProvider = serviceProvider.GetRequiredService<IConfirmationProvider>();
             rootCommand.AddCommand(ConfigCommand.CreateCommand(configLogger, wizardService: wizardService, clientAppValidator: clientAppValidator));
-            rootCommand.AddCommand(QueryEntraCommand.CreateCommand(queryEntraLogger, configService, executor, graphApiService));
-            rootCommand.AddCommand(CleanupCommand.CreateCommand(cleanupLogger, configService, botConfigurator, executor, graphApiService));
-            rootCommand.AddCommand(PublishCommand.CreateCommand(publishLogger, configService, graphApiService, manifestTemplateService));
+            rootCommand.AddCommand(QueryEntraCommand.CreateCommand(queryEntraLogger, configService, executor, graphApiService, agentBlueprintService));
+            rootCommand.AddCommand(CleanupCommand.CreateCommand(cleanupLogger, configService, botConfigurator, executor, agentBlueprintService, confirmationProvider));
+            rootCommand.AddCommand(PublishCommand.CreateCommand(publishLogger, configService, agentPublishService, graphApiService, agentBlueprintService, manifestTemplateService));
 
             // Wrap all command handlers with exception handling
             // Build with middleware for global exception handling
@@ -103,7 +106,7 @@ class Program
                 {
                     if (exception is Agent365Exception myEx)
                     {
-                        ExceptionHandler.HandleAgent365Exception(myEx);
+                        ExceptionHandler.HandleAgent365Exception(myEx, logFilePath: logFilePath);
                         context.ExitCode = myEx.ExitCode;
                     }
                     else
@@ -113,6 +116,11 @@ class Program
                         Console.Error.WriteLine("Unexpected error occurred. This may be a bug in the CLI.");
                         Console.Error.WriteLine("Please report this issue at: https://github.com/microsoft/Agent365-devTools/issues");
                         Console.Error.WriteLine();
+                        if (!string.IsNullOrEmpty(logFilePath))
+                        {
+                            Console.Error.WriteLine($"For more details, see the log file at: {logFilePath}");
+                            Console.Error.WriteLine();
+                        }
                         context.ExitCode = 1;
                     }
                 });
@@ -145,8 +153,10 @@ class Program
             // File logging if path provided
             if (!string.IsNullOrEmpty(logFilePath))
             {
+                // Always use Trace level for file logging to capture all diagnostic information
+                // This ensures comprehensive logs for debugging, regardless of console verbosity
                 builder.Services.AddSingleton<ILoggerProvider>(provider =>
-                    new FileLoggerProvider(logFilePath, minimumLevel));
+                    new FileLoggerProvider(logFilePath));
             }
         });
 
@@ -205,6 +215,8 @@ class Program
         services.AddSingleton<IMicrosoftGraphTokenProvider, MicrosoftGraphTokenProvider>();
 
         services.AddSingleton<GraphApiService>();
+        services.AddSingleton<AgentPublishService>();
+        services.AddSingleton<AgentBlueprintService>();
         services.AddSingleton<DelegatedConsentService>(); // For AgentApplication.Create permission
         services.AddSingleton<ManifestTemplateService>(); // For publish command template extraction
 
@@ -217,6 +229,9 @@ class Program
         // Register Azure CLI service and Configuration Wizard
         services.AddSingleton<IAzureCliService, AzureCliService>();
         services.AddSingleton<IConfigurationWizardService, ConfigurationWizardService>();
+        
+        // Register confirmation provider for user prompts
+        services.AddSingleton<IConfirmationProvider, ConsoleConfirmationProvider>();
     }
 
     public static string GetDisplayVersion()

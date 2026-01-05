@@ -99,6 +99,12 @@ public class BotConfigurator : IBotConfigurator
                 }
                 _logger.LogInformation("Successfully acquired access token");
 
+                // Normalize location: Remove spaces and convert to lowercase (e.g., "Canada Central" -> "canadacentral")
+                // Azure APIs require the API-friendly location name format
+                // TODO: Consider using `az account list-locations` for robust display name → programmatic name mapping
+                // See: https://learn.microsoft.com/en-us/cli/azure/account?view=azure-cli-latest#az-account-list-locations
+                // Current approach works for existing regions but may need updates for new region naming patterns
+                var normalizedLocation = location.Replace(" ", "").ToLowerInvariant();
                 var createEndpointBody = new JsonObject
                 {
                     ["AzureBotServiceInstanceName"] = endpointName,
@@ -106,7 +112,7 @@ public class BotConfigurator : IBotConfigurator
                     ["TenantId"] = tenantId,
                     ["MessagingEndpoint"] = messagingEndpoint,
                     ["Description"] = agentDescription,
-                    ["Location"] = location,
+                    ["Location"] = normalizedLocation,
                     ["Environment"] = EndpointHelper.GetDeploymentEnvironment(config.Environment),
                     ["ClusterCategory"] = EndpointHelper.GetClusterCategory(config.Environment)
                 };
@@ -114,7 +120,7 @@ public class BotConfigurator : IBotConfigurator
                 using var httpClient = Services.Internal.HttpClientFactory.CreateAuthenticatedClient(authToken);
 
                 // Call the endpoint
-                _logger.LogInformation("Making request to create endpoint.");
+                _logger.LogInformation("Making request to create endpoint (Location: {Location}).", normalizedLocation);
 
                 var response = await httpClient.PostAsync(createEndpointUrl,
                  new StringContent(createEndpointBody.ToJsonString(), System.Text.Encoding.UTF8, "application/json"));
@@ -255,7 +261,7 @@ public class BotConfigurator : IBotConfigurator
                 using var httpClient = Services.Internal.HttpClientFactory.CreateAuthenticatedClient(authToken);
 
                 // Call the endpoint
-                _logger.LogInformation("Making request to delete endpoint.");
+                _logger.LogInformation("Making request to delete endpoint (Location: {Location}).", location);
 
                 using var request = new HttpRequestMessage(HttpMethod.Delete, deleteEndpointUrl);
                 request.Content = new StringContent(createEndpointBody.ToJsonString(), System.Text.Encoding.UTF8, "application/json");
@@ -264,46 +270,60 @@ public class BotConfigurator : IBotConfigurator
 
                 if (!response.IsSuccessStatusCode)
                 {
+                    // Read error content ONCE for all error handling
                     var errorContent = await response.Content.ReadAsStringAsync();
-                    
-                    // Parse the error response to provide cleaner user-facing messages
+                    // Check if resource was not found - this is success for deletion (idempotent)
+                    if (response.StatusCode == System.Net.HttpStatusCode.NotFound || 
+                        response.StatusCode == System.Net.HttpStatusCode.BadRequest)
+                    {
+                        // For BadRequest, verify it's actually "not found" scenario
+                        if (response.StatusCode == System.Net.HttpStatusCode.BadRequest)
+                        {
+                            try
+                            {
+                                var errorJson = JsonSerializer.Deserialize<JsonElement>(errorContent);
+                                if (errorJson.TryGetProperty("details", out var detailsElement))
+                                {
+                                    var details = detailsElement.GetString();
+                                    if (details?.Contains("not found", StringComparison.OrdinalIgnoreCase) == true)
+                                    {
+                                        _logger.LogInformation("Bot endpoint not found - already deleted or does not exist");
+                                        return true; // Not found is success for deletion
+                                    }
+                                }
+                            }
+                            catch
+                            {
+                                // If we can't parse, fall through to error handling
+                            }
+                        }
+                        else // NotFound status
+                        {
+                            _logger.LogInformation("Bot endpoint not found - already deleted or does not exist");
+                            return true; // Not found is success for deletion
+                        }
+                    }
+                    // Real error - log and return false
                     try
                     {
                         var errorJson = JsonSerializer.Deserialize<JsonElement>(errorContent);
                         if (errorJson.TryGetProperty("error", out var errorMessage))
                         {
                             var error = errorMessage.GetString();
-                            if (errorJson.TryGetProperty("details", out var detailsElement))
-                            {
-                                var details = detailsElement.GetString();
-                                
-                                // Check for common error scenarios and provide cleaner messages
-                                if (details?.Contains("not found in any resource group") == true)
-                                {
-                                    _logger.LogError("Failed to delete bot endpoint '{EndpointName}'. Status: {Status}", endpointName, response.StatusCode);
-                                    _logger.LogError("The bot service was not found. It may have already been deleted or may not exist.");
-                                    return false;
-                                }
-                            }
-                            
-                            // Generic error with cleaned up message
                             _logger.LogError("Failed to delete bot endpoint. Status: {Status}", response.StatusCode);
                             _logger.LogError("{Error}", error);
                         }
                         else
                         {
-                            // Couldn't parse error, show raw response
                             _logger.LogError("Failed to delete bot endpoint. Status: {Status}", response.StatusCode);
                             _logger.LogError("Error response: {Error}", errorContent);
                         }
                     }
                     catch
                     {
-                        // JSON parsing failed, show raw error
                         _logger.LogError("Failed to delete bot endpoint. Status: {Status}", response.StatusCode);
                         _logger.LogError("Error response: {Error}", errorContent);
                     }
-
                     return false;
                 }
 

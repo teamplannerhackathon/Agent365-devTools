@@ -98,6 +98,7 @@ internal static class BlueprintSubcommand
         PlatformDetector platformDetector,
         IBotConfigurator botConfigurator,
         GraphApiService graphApiService,
+        AgentBlueprintService blueprintService,
         IClientAppValidator clientAppValidator)
     {
         var command = new Command("blueprint", 
@@ -172,7 +173,7 @@ internal static class BlueprintSubcommand
                     logger.LogError(ex, "Endpoint registration failed: {Message}", ex.Message);
                     logger.LogError("");
                     logger.LogError("To resolve this issue:");
-                    logger.LogError("  1. If endpoint already exists, delete it: a365 cleanup azure");
+                    logger.LogError("  1. If endpoint already exists, delete it: a365 cleanup blueprint --endpoint-only");
                     logger.LogError("  2. Verify your messaging endpoint configuration in a365.config.json");
                     logger.LogError("  3. Try registration again: a365 setup blueprint --endpoint-only");
                     Environment.Exit(1);
@@ -193,6 +194,7 @@ internal static class BlueprintSubcommand
                 botConfigurator,
                 platformDetector,
                 graphApiService,
+                blueprintService,
                 skipEndpointRegistration
                 );
 
@@ -213,6 +215,7 @@ internal static class BlueprintSubcommand
         IBotConfigurator botConfigurator,
         PlatformDetector platformDetector,
         GraphApiService graphApiService,
+        AgentBlueprintService blueprintService,
         bool skipEndpointRegistration = false,
         CancellationToken cancellationToken = default)
     {
@@ -320,6 +323,7 @@ internal static class BlueprintSubcommand
                 logger,
                 executor,
                 graphService,
+                blueprintService,
                 setupConfig.TenantId,
                 setupConfig.AgentBlueprintDisplayName,
                 setupConfig.AgentIdentityDisplayName,
@@ -519,6 +523,7 @@ internal static class BlueprintSubcommand
         ILogger logger,
         CommandExecutor executor,
         GraphApiService graphApiService,
+        AgentBlueprintService blueprintService,
         string tenantId,
         string displayName,
         string? agentIdentityDisplayName,
@@ -830,6 +835,7 @@ internal static class BlueprintSubcommand
 
                     await SetupHelpers.EnsureResourcePermissionsAsync(
                         graph: graphApiService,
+                        blueprintService: blueprintService,
                         config: setupConfig,
                         resourceAppId: AuthenticationConstants.MicrosoftGraphResourceAppId,
                         resourceName: "Microsoft Graph",
@@ -1024,7 +1030,7 @@ internal static class BlueprintSubcommand
                 throw new InvalidOperationException("Client secret creation returned empty secret");
             }
 
-            var protectedSecret = ProtectSecret(secretTextNode.GetValue<string>(), logger);
+            var protectedSecret = Microsoft.Agents.A365.DevTools.Cli.Helpers.SecretProtectionHelper.ProtectSecret(secretTextNode.GetValue<string>(), logger);
 
             var isProtected = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
             generatedConfig["agentBlueprintClientSecret"] = protectedSecret;
@@ -1249,38 +1255,6 @@ internal static class BlueprintSubcommand
         {
             logger.LogError(ex, "Exception creating federated identity credential: {Message}", ex.Message);
             return false;
-        }
-    }
-
-    private static string ProtectSecret(string plaintext, ILogger logger)
-    {
-        if (string.IsNullOrWhiteSpace(plaintext))
-        {
-            return plaintext;
-        }
-
-        try
-        {
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            {
-                var plaintextBytes = System.Text.Encoding.UTF8.GetBytes(plaintext);
-                var protectedBytes = ProtectedData.Protect(
-                    plaintextBytes,
-                    optionalEntropy: null,
-                    scope: DataProtectionScope.CurrentUser);
-
-                return Convert.ToBase64String(protectedBytes);
-            }
-            else
-            {
-                logger.LogWarning("DPAPI encryption not available on this platform. Secret will be stored in plaintext.");
-                return plaintext;
-            }
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Failed to encrypt secret, storing in plaintext: {Message}", ex.Message);
-            return plaintext;
         }
     }
 

@@ -1,14 +1,11 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
+using Microsoft.Agents.A365.DevTools.Cli.Constants;
 using Microsoft.Agents.A365.DevTools.Cli.Exceptions;
 using Microsoft.Agents.A365.DevTools.Cli.Services;
 using Microsoft.Extensions.Logging;
 using System.CommandLine;
-using System.Runtime.InteropServices;
-using System.Text.Json;
-using System.Text.Json.Nodes;
-using System.Threading;
 
 namespace Microsoft.Agents.A365.DevTools.Cli.Commands.SetupSubcommands;
 
@@ -31,6 +28,7 @@ internal static class AllSubcommand
         AzureWebAppCreator webAppCreator,
         PlatformDetector platformDetector,
         GraphApiService graphApiService,
+        AgentBlueprintService blueprintService,
         IClientAppValidator clientAppValidator)
     {
         var command = new Command("all", 
@@ -125,6 +123,13 @@ internal static class AllSubcommand
             {
                 // Load configuration
                 var setupConfig = await configService.LoadAsync(config.FullName);
+                
+                // Configure GraphApiService with custom client app ID if available
+                // This ensures inheritable permissions operations use the validated custom app
+                if (!string.IsNullOrWhiteSpace(setupConfig.ClientAppId))
+                {
+                    graphApiService.CustomClientAppId = setupConfig.ClientAppId;
+                }
 
                 // PHASE 0: CHECK REQUIREMENTS (if not skipped)
                 if (!skipRequirements)
@@ -282,7 +287,8 @@ internal static class AllSubcommand
                         configService,
                         botConfigurator,
                         platformDetector,
-                        graphApiService
+                        graphApiService,
+                        blueprintService
                         );
 
                     setupResults.BlueprintCreated = result.BlueprintCreated;
@@ -356,6 +362,7 @@ internal static class AllSubcommand
                         configService,
                         executor,
                         graphApiService,
+                        blueprintService,
                         setupConfig,
                         true,
                         setupResults);
@@ -388,6 +395,7 @@ internal static class AllSubcommand
                         executor,
                         setupConfig,
                         graphApiService,
+                        blueprintService,
                         true,
                         setupResults);
 
@@ -406,7 +414,8 @@ internal static class AllSubcommand
             }
             catch (Agent365Exception ex)
             {
-                ExceptionHandler.HandleAgent365Exception(ex);
+                var logFilePath = ConfigService.GetCommandLogPath(CommandNames.Setup);
+                ExceptionHandler.HandleAgent365Exception(ex, logFilePath: logFilePath);
                 Environment.Exit(1);
             }
             catch (Exception ex)

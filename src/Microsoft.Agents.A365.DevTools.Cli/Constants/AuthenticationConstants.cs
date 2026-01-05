@@ -30,6 +30,16 @@ public static class AuthenticationConstants
     public const string LocalhostRedirectUri = "http://localhost:8400/";
 
     /// <summary>
+    /// Required redirect URIs for Microsoft Graph PowerShell SDK authentication.
+    /// The SDK requires both http://localhost and http://localhost:8400/ for different auth flows.
+    /// </summary>
+    public static readonly string[] RequiredRedirectUris = new[]
+    {
+        "http://localhost",
+        "http://localhost:8400/"
+    };
+
+    /// <summary>
     /// Application name for cache directory
     /// </summary>
     public const string ApplicationName = "Microsoft.Agents.A365.DevTools.Cli";
@@ -67,6 +77,17 @@ public static class AuthenticationConstants
         "AgentIdentityBlueprint.UpdateAuthProperties.All",
         "DelegatedPermissionGrant.ReadWrite.All",
         "Directory.Read.All"
+    };
+
+    /// <summary>
+    /// Required scopes for oauth2 permission grants to service principals.
+    /// These scopes enable the service principals to operate correctly with the necessary permissions.
+    /// All scopes require admin consent.
+    /// </summary>
+    public static readonly string[] RequiredPermissionGrantScopes = new[]
+    {
+        "Application.ReadWrite.All",
+        "DelegatedPermissionGrant.ReadWrite.All"
     };
 
     /// <summary>
