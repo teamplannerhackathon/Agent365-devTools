@@ -162,7 +162,7 @@ internal static class SetupHelpers
             if (!results.MessagingEndpointRegistered)
             {
                 logger.LogInformation("  - Messaging Endpoint: Run 'a365 setup blueprint --endpoint-only' to retry");
-                logger.LogInformation("    Or delete conflicting endpoint first: a365 cleanup blueprint");
+                logger.LogInformation("    If there's a conflicting endpoint, delete it first: a365 cleanup blueprint --endpoint-only");
             }
         }
         else if (results.HasWarnings)

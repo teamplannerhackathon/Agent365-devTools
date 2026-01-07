@@ -62,11 +62,13 @@ public class AzureEnvironmentValidator : IAzureEnvironmentValidator
         // Check if Azure CLI is using 32-bit Python on 64-bit Windows
         if (result.StandardOutput.Contains("32 bit", StringComparison.OrdinalIgnoreCase))
         {
-            _logger.LogDebug("Azure CLI is using 32-bit Python (performance may be affected)");
+            _logger.LogWarning("Azure CLI is using 32-bit Python on 64-bit Windows (performance may be affected)");
+            _logger.LogWarning("For optimal performance, consider reinstalling Azure CLI with 64-bit Python");
+            _logger.LogWarning("For more information, see: https://learn.microsoft.com/cli/azure/install-azure-cli-windows");
         }
         else if (result.StandardOutput.Contains("64 bit", StringComparison.OrdinalIgnoreCase))
         {
-            _logger.LogDebug("Azure CLI is using 64-bit Python (optimal)");
+            _logger.LogInformation("Azure CLI is using 64-bit Python (optimal)");
         }
     }
 }
