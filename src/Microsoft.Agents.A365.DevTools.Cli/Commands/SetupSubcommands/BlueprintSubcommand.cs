@@ -377,8 +377,6 @@ internal static class BlueprintSubcommand
         await CreateBlueprintClientSecretAsync(
             blueprintObjectId!,
             blueprintAppId!,
-            generatedConfig,
-            generatedConfigPath,
             graphService,
             setupConfig,
             configService,
@@ -583,7 +581,9 @@ internal static class BlueprintSubcommand
             
             if (lookupResult.Found)
             {
-                logger.LogDebug("Discovered existing blueprint from previous setup, updating config with objectId for faster lookups");
+                logger.LogInformation("Found existing blueprint by display name - updating config with current identifiers");
+                logger.LogInformation("  - Object ID: {ObjectId}", lookupResult.ObjectId);
+                logger.LogInformation("  - App ID: {AppId}", lookupResult.AppId);
                 
                 existingObjectId = lookupResult.ObjectId;
                 existingAppId = lookupResult.AppId;
@@ -620,8 +620,33 @@ internal static class BlueprintSubcommand
                 logger.LogDebug("Config updated with blueprint identifiers");
             }
 
-            // Blueprint exists, skip creation and move to FIC/secret validation
-            return (true, existingAppId, existingObjectId, existingServicePrincipalId, alreadyExisted: true);
+            // Blueprint exists - complete configuration (FIC validation + admin consent)
+            // Validate required identifiers before proceeding
+            if (string.IsNullOrWhiteSpace(existingAppId) || string.IsNullOrWhiteSpace(existingObjectId))
+            {
+                logger.LogError("Existing blueprint found but required identifiers are missing (AppId: {AppId}, ObjectId: {ObjectId})", 
+                    existingAppId ?? "(null)", existingObjectId ?? "(null)");
+                return (false, null, null, null, alreadyExisted: false);
+            }
+
+            return await CompleteBlueprintConfigurationAsync(
+                logger,
+                executor,
+                graphApiService,
+                blueprintService,
+                blueprintLookupService,
+                federatedCredentialService,
+                tenantId,
+                displayName,
+                managedIdentityPrincipalId,
+                useManagedIdentity,
+                generatedConfig,
+                setupConfig,
+                existingAppId,
+                existingObjectId,
+                existingServicePrincipalId,
+                alreadyExisted: true,
+                ct);
         }
 
         // ========================================================================
@@ -840,28 +865,84 @@ internal static class BlueprintSubcommand
                 }
             }
 
-            // Persist blueprint identifiers immediately after creation
-            logger.LogInformation("Persisting blueprint metadata to config...");
+            // Store blueprint identifiers in config object (will be persisted after secret creation)
             setupConfig.AgentBlueprintObjectId = objectId;
             setupConfig.AgentBlueprintServicePrincipalObjectId = servicePrincipalId;
             setupConfig.AgentBlueprintId = appId;
             
-            logger.LogDebug("About to save config with: ObjectId={ObjectId}, SPObjectId={SPObjectId}, AppId={AppId}", 
+            logger.LogDebug("Blueprint identifiers staged for persistence: ObjectId={ObjectId}, SPObjectId={SPObjectId}, AppId={AppId}", 
                 objectId, servicePrincipalId, appId);
-            
-            await configService.SaveStateAsync(setupConfig);
-            logger.LogInformation("Config updated with blueprint identifiers");
-            
-            logger.LogDebug("After save, config has: ObjectId={ObjectId}, SPObjectId={SPObjectId}, AppId={AppId}", 
-                setupConfig.AgentBlueprintObjectId, setupConfig.AgentBlueprintServicePrincipalObjectId, setupConfig.AgentBlueprintId);
 
-            // Create Federated Identity Credential ONLY when MSI is relevant (if managed identity provided)
-            if (useManagedIdentity && !string.IsNullOrWhiteSpace(managedIdentityPrincipalId))
+            // Complete configuration (FIC validation + admin consent)
+            return await CompleteBlueprintConfigurationAsync(
+                logger,
+                executor,
+                graphApiService,
+                blueprintService,
+                blueprintLookupService,
+                federatedCredentialService,
+                tenantId,
+                displayName,
+                managedIdentityPrincipalId,
+                useManagedIdentity,
+                generatedConfig,
+                setupConfig,
+                appId,
+                objectId,
+                servicePrincipalId,
+                alreadyExisted: false,
+                ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to create agent blueprint: {Message}", ex.Message);
+            return (false, null, null, null, alreadyExisted: false);
+        }
+    }
+
+    /// <summary>
+    /// Completes blueprint configuration by validating/creating federated credentials and requesting admin consent.
+    /// Called by both existing blueprint and new blueprint paths to ensure consistent configuration.
+    /// </summary>
+    private static async Task<(bool success, string? appId, string? objectId, string? servicePrincipalId, bool alreadyExisted)> CompleteBlueprintConfigurationAsync(
+        ILogger logger,
+        CommandExecutor executor,
+        GraphApiService graphApiService,
+        AgentBlueprintService blueprintService,
+        BlueprintLookupService blueprintLookupService,
+        FederatedCredentialService federatedCredentialService,
+        string tenantId,
+        string displayName,
+        string? managedIdentityPrincipalId,
+        bool useManagedIdentity,
+        JsonObject generatedConfig,
+        Models.Agent365Config setupConfig,
+        string appId,
+        string objectId,
+        string? servicePrincipalId,
+        bool alreadyExisted,
+        CancellationToken ct)
+    {
+        // ========================================================================
+        // Federated Identity Credential Validation/Creation
+        // ========================================================================
+        
+        // Create Federated Identity Credential ONLY when MSI is relevant (if managed identity provided)
+        if (useManagedIdentity && !string.IsNullOrWhiteSpace(managedIdentityPrincipalId))
+        {
+            logger.LogInformation("Configuring Federated Identity Credential for Managed Identity...");
+            // Include full blueprint object ID to ensure absolute uniqueness across tenant
+            // FIC names have tenant-wide uniqueness constraints, not scoped to individual blueprints
+            // Using full objectId guarantees no collisions even with rapid create/delete cycles
+            var credentialName = $"{displayName.Replace(" ", "")}-{objectId}-MSI";
+
+            // For existing blueprints, check if FIC already exists to provide better UX
+            // For new blueprints, we skip this and go straight to create (avoiding race conditions)
+            bool ficSuccess;
+            if (alreadyExisted)
             {
-                logger.LogInformation("Creating Federated Identity Credential for Managed Identity...");
-                var credentialName = $"{displayName.Replace(" ", "")}-MSI";
-
-                // Check if FIC already exists before creating
+                // Blueprint exists - check if FIC is already configured
+                logger.LogDebug("Checking for existing federated credential with subject: {Subject}", managedIdentityPrincipalId);
                 var ficExistsResult = await federatedCredentialService.CheckFederatedCredentialExistsAsync(
                     tenantId,
                     objectId,
@@ -869,30 +950,50 @@ internal static class BlueprintSubcommand
                     $"https://login.microsoftonline.com/{tenantId}/v2.0",
                     ct);
 
-                bool ficSuccess;
                 if (ficExistsResult.Exists)
                 {
-                    logger.LogInformation("Federated credential already exists (skipping)");
+                    logger.LogInformation("Federated Identity Credential already configured");
+                    logger.LogInformation("  - Credential Name: {Name}", ficExistsResult.ExistingCredential?.Name ?? "(unknown)");
                     logger.LogInformation("  - Subject (MSI Principal ID): {MsiId}", managedIdentityPrincipalId);
                     ficSuccess = true;
                 }
                 else
                 {
-                    logger.LogInformation("Creating new federated credential...");
-                    var ficCreateResult = await federatedCredentialService.CreateFederatedCredentialAsync(
-                        tenantId,
-                        objectId,
-                        credentialName,
-                        $"https://login.microsoftonline.com/{tenantId}/v2.0",
-                        managedIdentityPrincipalId,
-                        new List<string> { "api://AzureADTokenExchange" },
+                    // FIC doesn't exist on existing blueprint - create it with retry logic
+                    logger.LogInformation("Creating Federated Identity Credential for existing blueprint...");
+                    logger.LogDebug("  - Name: {Name}", credentialName);
+                    logger.LogDebug("  - Subject: {Subject}", managedIdentityPrincipalId);
+                    logger.LogDebug("  - Issuer: https://login.microsoftonline.com/{TenantId}/v2.0", tenantId);
+                    
+                    var retryHelper = new RetryHelper(logger);
+                    FederatedCredentialCreateResult? ficCreateResult = null;
+                    
+                    var ficReady = await retryHelper.ExecuteWithRetryAsync(
+                        async ct =>
+                        {
+                            ficCreateResult = await federatedCredentialService.CreateFederatedCredentialAsync(
+                                tenantId,
+                                objectId,
+                                credentialName,
+                                $"https://login.microsoftonline.com/{tenantId}/v2.0",
+                                managedIdentityPrincipalId,
+                                new List<string> { "api://AzureADTokenExchange" },
+                                ct);
+                            
+                            // Return true if successful or already exists
+                            // Return false if should retry (HTTP 404)
+                            return ficCreateResult.Success || ficCreateResult.AlreadyExisted;
+                        },
+                        result => !result, // Retry while result is false
+                        maxRetries: 10,
+                        baseDelaySeconds: 3,
                         ct);
 
-                    ficSuccess = ficCreateResult.Success;
+                    ficSuccess = (ficCreateResult?.Success ?? false) || (ficCreateResult?.AlreadyExisted ?? false);
 
-                    if (ficCreateResult.AlreadyExisted)
+                    if (ficCreateResult?.AlreadyExisted == true)
                     {
-                        logger.LogInformation("Federated credential was created by another process (race condition handled)");
+                        logger.LogInformation("Federated Identity Credential already exists (detected during creation)");
                     }
                     else if (ficSuccess)
                     {
@@ -900,130 +1001,270 @@ internal static class BlueprintSubcommand
                     }
                     else
                     {
-                        logger.LogWarning("Failed to create Federated Identity Credential: {Error}", ficCreateResult.ErrorMessage ?? "Unknown error");
+                        logger.LogError("Failed to create Federated Identity Credential: {Error}", ficCreateResult?.ErrorMessage ?? "Unknown error");
+                        logger.LogError("The agent instance may not be able to authenticate using Managed Identity");
                     }
                 }
-
-                if (!ficSuccess)
-                {
-                    logger.LogWarning("Failed to create Federated Identity Credential");
-                }
-            }
-            else if (!useManagedIdentity)
-            {
-                logger.LogInformation("Skipping Federated Identity Credential creation (external hosting / no MSI configured)");
             }
             else
             {
-                logger.LogInformation("Skipping Federated Identity Credential creation (no MSI Principal ID provided)");
-            }
+                // Brand new blueprint - create with retry logic for propagation delays
+                logger.LogInformation("Creating Federated Identity Credential for new blueprint...");
+                logger.LogDebug("  - Name: {Name}", credentialName);
+                logger.LogDebug("  - Subject: {Subject}", managedIdentityPrincipalId);
+                logger.LogDebug("  - Issuer: https://login.microsoftonline.com/{TenantId}/v2.0", tenantId);
+                
+                var retryHelper = new RetryHelper(logger);
+                FederatedCredentialCreateResult? ficCreateResult = null;
+                
+                var ficReady = await retryHelper.ExecuteWithRetryAsync(
+                    async ct =>
+                    {
+                        ficCreateResult = await federatedCredentialService.CreateFederatedCredentialAsync(
+                            tenantId,
+                            objectId,
+                            credentialName,
+                            $"https://login.microsoftonline.com/{tenantId}/v2.0",
+                            managedIdentityPrincipalId,
+                            new List<string> { "api://AzureADTokenExchange" },
+                            ct);
+                        
+                        // Return true if successful or already exists
+                        // Return false if should retry (HTTP 404)
+                        return ficCreateResult.Success || ficCreateResult.AlreadyExisted;
+                    },
+                    result => !result, // Retry while result is false
+                    maxRetries: 10,
+                    baseDelaySeconds: 3,
+                    ct);
 
-            // Request admin consent
-            logger.LogInformation("Requesting admin consent for application");
+                ficSuccess = (ficCreateResult?.Success ?? false) || (ficCreateResult?.AlreadyExisted ?? false);
 
-            // Get application scopes from config (fallback to hardcoded defaults)
-            var applicationScopes = new List<string>();
-
-            var appScopesFromConfig = setupConfig.AgentApplicationScopes;
-            if (appScopesFromConfig != null && appScopesFromConfig.Count > 0)
-            {
-                logger.LogInformation("  Found 'agentApplicationScopes' in typed config");
-                applicationScopes.AddRange(appScopesFromConfig);
-            }
-            else
-            {
-                logger.LogInformation("  'agentApplicationScopes' not found in config, using hardcoded defaults");
-                applicationScopes.AddRange(ConfigConstants.DefaultAgentApplicationScopes);
-            }
-
-            // Final fallback (should not happen with proper defaults)
-            if (applicationScopes.Count == 0)
-            {
-                logger.LogWarning("No application scopes available, falling back to User.Read");
-                applicationScopes.Add("User.Read");
-            }
-
-            logger.LogInformation("  - Application scopes: {Scopes}", string.Join(", ", applicationScopes));
-
-            // Generate consent URL for Graph API
-            var applicationScopesJoined = string.Join(' ', applicationScopes);
-            var consentUrlGraph = $"https://login.microsoftonline.com/{tenantId}/v2.0/adminconsent?client_id={appId}&scope={Uri.EscapeDataString(applicationScopesJoined)}&redirect_uri=https://entra.microsoft.com/TokenAuthorize&state=xyz123";
-
-            logger.LogInformation("Opening browser for Graph API admin consent...");
-            TryOpenBrowser(consentUrlGraph);
-
-            var consentSuccess = await AdminConsentHelper.PollAdminConsentAsync(executor, logger, appId, "Graph API Scopes", 180, 5, ct);
-
-            if (consentSuccess)
-            {
-                logger.LogInformation("Graph API admin consent granted successfully!");
-            }
-            else
-            {
-                logger.LogWarning("Graph API admin consent may not have completed");
-            }
-
-            // Set inheritable permissions for Microsoft Graph so agent instances can access Graph on behalf of users
-            if (consentSuccess)
-            {
-                logger.LogInformation("Configuring inheritable permissions for Microsoft Graph...");
-                try
+                if (ficCreateResult?.AlreadyExisted == true)
                 {
-                    // Update config with blueprint ID so EnsureResourcePermissionsAsync can use it
-                    setupConfig.AgentBlueprintId = appId;
-
-                    await SetupHelpers.EnsureResourcePermissionsAsync(
-                        graph: graphApiService,
-                        blueprintService: blueprintService,
-                        config: setupConfig,
-                        resourceAppId: AuthenticationConstants.MicrosoftGraphResourceAppId,
-                        resourceName: "Microsoft Graph",
-                        scopes: applicationScopes.ToArray(),
-                        logger: logger,
-                        addToRequiredResourceAccess: false,
-                        setInheritablePermissions: true,
-                        setupResults: null,
-                        ct: ct);
-
-                    logger.LogInformation("Microsoft Graph inheritable permissions configured successfully");
+                    logger.LogInformation("Federated Identity Credential configured (idempotent)");
                 }
-                catch (Exception ex)
+                else if (ficSuccess)
                 {
-                    logger.LogWarning("Failed to configure Microsoft Graph inheritable permissions: {Message}", ex.Message);
-                    logger.LogWarning("Agent instances may not be able to access Microsoft Graph resources");
-                    logger.LogWarning("You can configure these manually later with: a365 setup permissions");
+                    logger.LogInformation("Federated Identity Credential created successfully");
+                }
+                else
+                {
+                    logger.LogError("Failed to create Federated Identity Credential: {Error}", ficCreateResult?.ErrorMessage ?? "Unknown error");
+                    logger.LogError("The agent instance may not be able to authenticate using Managed Identity");
                 }
             }
 
-            // Add Graph API consent to the resource consents collection
-            var resourceConsents = new JsonArray();
-            resourceConsents.Add(new JsonObject
+            if (!ficSuccess)
             {
-                ["resourceName"] = "Microsoft Graph",
-                ["resourceAppId"] = "00000003-0000-0000-c000-000000000000",
-                ["consentUrl"] = consentUrlGraph,
-                ["consentGranted"] = consentSuccess,
-                ["consentTimestamp"] = consentSuccess ? DateTime.UtcNow.ToString("O") : null,
-                ["scopes"] = new JsonArray(applicationScopes.Select(s => JsonValue.Create(s)).ToArray())
-            });
-
-            generatedConfig["resourceConsents"] = resourceConsents;
-
-            if (!consentSuccess)
-            {
-                logger.LogWarning("");
-                logger.LogWarning("Admin consent may not have been detected");
-                logger.LogWarning("The setup will continue, but you may need to grant consent manually.");
-                logger.LogWarning("Consent URL: {Url}", consentUrlGraph);
+                logger.LogWarning("Federated Identity Credential configuration incomplete");
+                logger.LogWarning("You may need to create the credential manually in Entra ID");
             }
-
-            return (true, appId, objectId, servicePrincipalId, alreadyExisted: false);
         }
-        catch (Exception ex)
+        else if (!useManagedIdentity)
         {
-            logger.LogError(ex, "Failed to create agent blueprint: {Message}", ex.Message);
-            return (false, null, null, null, alreadyExisted: false);
+            logger.LogInformation("Skipping Federated Identity Credential creation (external hosting / no MSI configured)");
         }
+        else
+        {
+            logger.LogInformation("Skipping Federated Identity Credential creation (no MSI Principal ID provided)");
+        }
+
+        // ========================================================================
+        // Admin Consent
+        // ========================================================================
+        
+        var (consentSuccess, consentUrlGraph) = await EnsureAdminConsentAsync(
+            logger,
+            executor,
+            graphApiService,
+            blueprintService,
+            blueprintLookupService,
+            tenantId,
+            appId,
+            objectId,
+            servicePrincipalId,
+            setupConfig,
+            alreadyExisted,
+            ct);
+
+        // Add Graph API consent to the resource consents collection
+        var applicationScopes = GetApplicationScopes(setupConfig, logger);
+        var resourceConsents = new JsonArray();
+        resourceConsents.Add(new JsonObject
+        {
+            ["resourceName"] = "Microsoft Graph",
+            ["resourceAppId"] = AuthenticationConstants.MicrosoftGraphResourceAppId,
+            ["consentUrl"] = consentUrlGraph,
+            ["consentGranted"] = consentSuccess,
+            ["consentTimestamp"] = consentSuccess ? DateTime.UtcNow.ToString("O") : null,
+            ["scopes"] = new JsonArray(applicationScopes.Select(s => JsonValue.Create(s)).ToArray())
+        });
+
+        generatedConfig["resourceConsents"] = resourceConsents;
+
+        if (!consentSuccess)
+        {
+            logger.LogWarning("");
+            logger.LogWarning("Admin consent may not have been detected");
+            logger.LogWarning("The setup will continue, but you may need to grant consent manually.");
+            logger.LogWarning("Consent URL: {Url}", consentUrlGraph);
+        }
+
+        return (true, appId, objectId, servicePrincipalId, alreadyExisted);
+    }
+
+    /// <summary>
+    /// Gets application scopes from config with fallback to defaults.
+    /// </summary>
+    private static List<string> GetApplicationScopes(Models.Agent365Config setupConfig, ILogger logger)
+    {
+        var applicationScopes = new List<string>();
+
+        var appScopesFromConfig = setupConfig.AgentApplicationScopes;
+        if (appScopesFromConfig != null && appScopesFromConfig.Count > 0)
+        {
+            logger.LogDebug("  Found 'agentApplicationScopes' in typed config");
+            applicationScopes.AddRange(appScopesFromConfig);
+        }
+        else
+        {
+            logger.LogDebug("  'agentApplicationScopes' not found in config, using hardcoded defaults");
+            applicationScopes.AddRange(ConfigConstants.DefaultAgentApplicationScopes);
+        }
+
+        // Final fallback (should not happen with proper defaults)
+        if (applicationScopes.Count == 0)
+        {
+            logger.LogWarning("No application scopes available, falling back to User.Read");
+            applicationScopes.Add("User.Read");
+        }
+
+        return applicationScopes;
+    }
+
+    /// <summary>
+    /// Ensures admin consent for the blueprint application.
+    /// For existing blueprints, checks if consent already exists before requesting browser interaction.
+    /// For new blueprints, skips verification and directly requests consent.
+    /// Returns: (consentSuccess, consentUrl)
+    /// </summary>
+    private static async Task<(bool consentSuccess, string consentUrl)> EnsureAdminConsentAsync(
+        ILogger logger,
+        CommandExecutor executor,
+        GraphApiService graphApiService,
+        AgentBlueprintService blueprintService,
+        BlueprintLookupService blueprintLookupService,
+        string tenantId,
+        string appId,
+        string objectId,
+        string? servicePrincipalId,
+        Models.Agent365Config setupConfig,
+        bool alreadyExisted,
+        CancellationToken ct)
+    {
+        var applicationScopes = GetApplicationScopes(setupConfig, logger);
+        bool consentAlreadyExists = false;
+
+        // Only check for existing consent if blueprint already existed
+        // New blueprints cannot have consent yet, so skip the verification
+        if (alreadyExisted)
+        {
+            logger.LogInformation("Verifying admin consent for application");
+            logger.LogDebug("  - Application scopes: {Scopes}", string.Join(", ", applicationScopes));
+
+            // Check if consent already exists with required scopes
+            var blueprintSpId = servicePrincipalId;
+            if (string.IsNullOrWhiteSpace(blueprintSpId))
+            {
+                logger.LogDebug("Looking up service principal for blueprint to check consent...");
+                var spLookup = await blueprintLookupService.GetServicePrincipalByAppIdAsync(tenantId, appId, ct);
+                blueprintSpId = spLookup.ObjectId;
+            }
+
+            if (!string.IsNullOrWhiteSpace(blueprintSpId))
+            {
+                // Get Microsoft Graph service principal ID
+                var graphSpId = await graphApiService.LookupServicePrincipalByAppIdAsync(
+                    tenantId,
+                    AuthenticationConstants.MicrosoftGraphResourceAppId,
+                    ct);
+
+                if (!string.IsNullOrWhiteSpace(graphSpId))
+                {
+                    // Use shared helper to check existing consent
+                    consentAlreadyExists = await AdminConsentHelper.CheckConsentExistsAsync(
+                        graphApiService,
+                        tenantId,
+                        blueprintSpId,
+                        graphSpId,
+                        applicationScopes,
+                        logger,
+                        ct);
+                }
+            }
+
+            if (consentAlreadyExists)
+            {
+                logger.LogInformation("Admin consent already granted for all required scopes");
+                logger.LogDebug("  - Scopes: {Scopes}", string.Join(", ", applicationScopes));
+            }
+        }
+
+        var applicationScopesJoined = string.Join(' ', applicationScopes);
+        var consentUrlGraph = $"https://login.microsoftonline.com/{tenantId}/v2.0/adminconsent?client_id={appId}&scope={Uri.EscapeDataString(applicationScopesJoined)}&redirect_uri=https://entra.microsoft.com/TokenAuthorize&state=xyz123";
+
+        if (consentAlreadyExists)
+        {
+            return (true, consentUrlGraph);
+        }
+
+        // Request consent via browser
+        logger.LogInformation("Requesting admin consent for application");
+        logger.LogInformation("  - Application scopes: {Scopes}", string.Join(", ", applicationScopes));
+        logger.LogInformation("Opening browser for Graph API admin consent...");
+        TryOpenBrowser(consentUrlGraph);
+
+        var consentSuccess = await AdminConsentHelper.PollAdminConsentAsync(executor, logger, appId, "Graph API Scopes", 180, 5, ct);
+
+        if (consentSuccess)
+        {
+            logger.LogInformation("Graph API admin consent granted successfully!");
+
+            // Set inheritable permissions for Microsoft Graph
+            logger.LogInformation("Configuring inheritable permissions for Microsoft Graph...");
+            try
+            {
+                setupConfig.AgentBlueprintId = appId;
+
+                await SetupHelpers.EnsureResourcePermissionsAsync(
+                    graph: graphApiService,
+                    blueprintService: blueprintService,
+                    config: setupConfig,
+                    resourceAppId: AuthenticationConstants.MicrosoftGraphResourceAppId,
+                    resourceName: "Microsoft Graph",
+                    scopes: applicationScopes.ToArray(),
+                    logger: logger,
+                    addToRequiredResourceAccess: false,
+                    setInheritablePermissions: true,
+                    setupResults: null,
+                    ct: ct);
+
+                logger.LogInformation("Microsoft Graph inheritable permissions configured successfully");
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning("Failed to configure Microsoft Graph inheritable permissions: {Message}", ex.Message);
+                logger.LogWarning("Agent instances may not be able to access Microsoft Graph resources");
+                logger.LogWarning("You can configure these manually later with: a365 setup permissions");
+            }
+        }
+        else
+        {
+            logger.LogWarning("Graph API admin consent may not have completed");
+        }
+
+        return (consentSuccess, consentUrlGraph);
     }
 
     /// <summary>
@@ -1115,8 +1356,6 @@ internal static class BlueprintSubcommand
     public static async Task CreateBlueprintClientSecretAsync(
         string blueprintObjectId,
         string blueprintAppId,
-        JsonObject generatedConfig,
-        string generatedConfigPath,
         GraphApiService graphService,
         Models.Agent365Config setupConfig,
         IConfigService configService,
@@ -1128,7 +1367,7 @@ internal static class BlueprintSubcommand
             logger.LogInformation("Creating client secret for Agent Blueprint using Graph API...");
 
             var graphToken = await graphService.GetGraphAccessTokenAsync(
-                generatedConfig["tenantId"]?.GetValue<string>() ?? string.Empty, ct);
+                setupConfig.TenantId ?? string.Empty, ct);
 
             if (string.IsNullOrWhiteSpace(graphToken))
             {
@@ -1173,17 +1412,16 @@ internal static class BlueprintSubcommand
             var protectedSecret = Microsoft.Agents.A365.DevTools.Cli.Helpers.SecretProtectionHelper.ProtectSecret(secretTextNode.GetValue<string>(), logger);
 
             var isProtected = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
-            generatedConfig["agentBlueprintClientSecret"] = protectedSecret;
-            generatedConfig["agentBlueprintClientSecretProtected"] = isProtected;
             setupConfig.AgentBlueprintClientSecret = protectedSecret;
             setupConfig.AgentBlueprintClientSecretProtected = isProtected;
 
-            // Use SaveStateAsync to preserve all existing dynamic properties (especially agentBlueprintServicePrincipalObjectId)
+            // Single consolidated save: persists blueprint identifiers (objectId, servicePrincipalId, appId) + client secret
+            // This ensures all blueprint-related state is saved atomically
             await configService.SaveStateAsync(setupConfig);
 
             logger.LogInformation("Client secret created successfully!");
             logger.LogInformation($"  - Secret stored in generated config (encrypted: {isProtected})");
-            logger.LogWarning("IMPORTANT: The client secret has been stored in {Path}", generatedConfigPath);
+            logger.LogWarning("IMPORTANT: The client secret has been stored in a365.generated.config.json");
             logger.LogWarning("Keep this file secure and do not commit it to source control!");
 
             if (!isProtected)
@@ -1200,7 +1438,7 @@ internal static class BlueprintSubcommand
             logger.LogInformation("  2. Find your Agent Blueprint: {AppId}", blueprintAppId);
             logger.LogInformation("  3. Navigate to Certificates & secrets > Client secrets");
             logger.LogInformation("  4. Click 'New client secret' and save the value");
-            logger.LogInformation("  5. Add it to {Path} as 'agentBlueprintClientSecret'", generatedConfigPath);
+            logger.LogInformation("  5. Add it to a365.generated.config.json as 'agentBlueprintClientSecret'");
         }
     }
 

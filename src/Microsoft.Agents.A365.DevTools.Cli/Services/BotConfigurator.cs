@@ -131,13 +131,18 @@ public class BotConfigurator : IBotConfigurator
                 {
                     var errorContent = await response.Content.ReadAsStringAsync();
                     
-                    // Check for "already exists" condition in multiple forms:
-                    // 1. HTTP 409 Conflict (standard REST pattern)
-                    // 2. HTTP 500 InternalServerError with "already exists" in message body (Azure Bot Service pattern)
-                    bool isAlreadyExists = response.StatusCode == System.Net.HttpStatusCode.Conflict ||
-                        (errorContent.Contains(AlreadyExistsErrorMessage, StringComparison.OrdinalIgnoreCase));
+                    // Check for "already exists" condition - must be bot/endpoint-specific to avoid false positives
+                    // Valid patterns:
+                    // 1. HTTP 409 Conflict (standard REST pattern for resource conflicts)
+                    // 2. HTTP 500 with bot-specific "already exists" message (Azure Bot Service pattern)
+                    //    - Must contain "already exists" AND at least one bot-specific keyword
+                    bool isBotAlreadyExists = response.StatusCode == System.Net.HttpStatusCode.Conflict ||
+                        (errorContent.Contains(AlreadyExistsErrorMessage, StringComparison.OrdinalIgnoreCase) &&
+                         (errorContent.Contains("bot", StringComparison.OrdinalIgnoreCase) ||
+                          errorContent.Contains("endpoint", StringComparison.OrdinalIgnoreCase) ||
+                          errorContent.Contains(endpointName, StringComparison.OrdinalIgnoreCase)));
                     
-                    if (isAlreadyExists)
+                    if (isBotAlreadyExists)
                     {
                         _logger.LogWarning("Endpoint '{EndpointName}' {AlreadyExistsMessage} in the resource group", endpointName, AlreadyExistsErrorMessage);
                         _logger.LogInformation("Endpoint registration completed ({AlreadyExistsMessage})", AlreadyExistsErrorMessage);

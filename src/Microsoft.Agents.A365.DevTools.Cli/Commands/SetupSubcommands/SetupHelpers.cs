@@ -93,11 +93,20 @@ internal static class SetupHelpers
             logger.LogInformation("  [OK] Agent blueprint {Status} (Blueprint ID: {BlueprintId})", status, results.BlueprintId ?? "unknown");
         }
         if (results.McpPermissionsConfigured)
-            logger.LogInformation("  [OK] MCP server permissions configured");
+        {
+            var status = results.McpPermissionsAlreadyExisted ? "verified (already configured)" : "configured";
+            logger.LogInformation("  [OK] MCP server permissions {Status}", status);
+        }
         if (results.InheritablePermissionsConfigured)
-            logger.LogInformation("  [OK] Inheritable permissions configured");
+        {
+            var status = results.InheritablePermissionsAlreadyExisted ? "verified (already configured)" : "configured";
+            logger.LogInformation("  [OK] Inheritable permissions {Status}", status);
+        }
         if (results.BotApiPermissionsConfigured)
-            logger.LogInformation("  [OK] Messaging Bot API permissions configured");
+        {
+            var status = results.BotApiPermissionsAlreadyExisted ? "verified (already configured)" : "configured";
+            logger.LogInformation("  [OK] Messaging Bot API permissions {Status}", status);
+        }
         if (results.MessagingEndpointRegistered)
         {
             var status = results.EndpointAlreadyExisted ? "configured (already exists)" : "created";
@@ -271,7 +280,7 @@ internal static class SetupHelpers
 
         if (setInheritablePermissions)
         {
-            logger.LogInformation("   - Inheritable permissions: blueprint {Blueprint} to resourceAppId {ResourceAppId} scopes [{Scopes}]",
+            logger.LogInformation("   - Configuring inheritable permissions: blueprint {Blueprint} to resourceAppId {ResourceAppId} scopes [{Scopes}]",
                 config.AgentBlueprintId, resourceAppId, string.Join(' ', scopes));
 
             // Use custom client app auth for inheritable permissions - Azure CLI doesn't support this operation
@@ -284,6 +293,15 @@ internal static class SetupHelpers
             {
                 throw new SetupValidationException($"Failed to set inheritable permissions: {err}. " +
                     "Ensure you have AgentIdentityBlueprint.UpdateAuthProperties.All and Application.ReadWrite.All permissions in your custom client app.");
+            }
+
+            if (alreadyExists)
+            {
+                logger.LogInformation("   - Inheritable permissions already configured for {ResourceName}", resourceName);
+            }
+            else
+            {
+                logger.LogInformation("   - Inheritable permissions created for {ResourceName}", resourceName);
             }
 
             inheritanceConfigured = true;
@@ -352,6 +370,22 @@ internal static class SetupHelpers
                 // Verification is non-critical - log warning but don't fail setup
                 logger.LogWarning("Failed to verify {ResourceName} inheritable permissions: {Message}. Setup will continue.", resourceName, verifyEx.Message);
                 setupResults?.Warnings.Add($"Could not verify {resourceName} inheritable permissions: {verifyEx.Message}");
+            }
+        }
+
+        // Track if permissions already existed for accurate summary logging
+        if (setupResults != null && inheritanceConfigured)
+        {
+            // Update flags based on resource type
+            if (resourceName.Contains("Tools", StringComparison.OrdinalIgnoreCase) || 
+                resourceName.Contains("MCP", StringComparison.OrdinalIgnoreCase))
+            {
+                setupResults.McpPermissionsAlreadyExisted = inheritanceAlreadyExisted;
+                setupResults.InheritablePermissionsAlreadyExisted = inheritanceAlreadyExisted;
+            }
+            else if (resourceName.Contains("Bot", StringComparison.OrdinalIgnoreCase))
+            {
+                setupResults.BotApiPermissionsAlreadyExisted = inheritanceAlreadyExisted;
             }
         }
 

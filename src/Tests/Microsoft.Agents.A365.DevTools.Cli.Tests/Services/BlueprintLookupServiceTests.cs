@@ -150,7 +150,7 @@ public class BlueprintLookupServiceTests
             .Returns(jsonDoc);
 
         // Act
-        var result = await _service.GetApplicationByDisplayNameAsync(TestTenantId, displayNameWithQuotes);
+        await _service.GetApplicationByDisplayNameAsync(TestTenantId, displayNameWithQuotes);
 
         // Assert
         await _graphApiService.Received(1).GraphGetAsync(

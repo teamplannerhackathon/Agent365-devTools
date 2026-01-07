@@ -25,7 +25,13 @@ public class FederatedCredentialServiceTests
     public FederatedCredentialServiceTests()
     {
         _logger = Substitute.For<ILogger<FederatedCredentialService>>();
-        _graphApiService = Substitute.For<GraphApiService>();
+        
+        // Use ForPartsOf to create a partial mock of the concrete GraphApiService class
+        // This allows mocking of virtual methods (GraphGetAsync, GraphPostWithResponseAsync)
+        var mockLogger = Substitute.For<ILogger<GraphApiService>>();
+        var mockExecutor = Substitute.ForPartsOf<CommandExecutor>(Substitute.For<ILogger<CommandExecutor>>());
+        _graphApiService = Substitute.ForPartsOf<GraphApiService>(mockLogger, mockExecutor);
+        
         _service = new FederatedCredentialService(_logger, _graphApiService);
     }
 
@@ -223,7 +229,7 @@ public class FederatedCredentialServiceTests
         _graphApiService.GraphPostWithResponseAsync(
             TestTenantId,
             $"/beta/applications/{TestBlueprintObjectId}/federatedIdentityCredentials",
-            Arg.Any<string>(),
+            Arg.Any<object>(),
             Arg.Any<CancellationToken>(),
             Arg.Any<IEnumerable<string>?>())
             .Returns(successResponse);
@@ -260,7 +266,7 @@ public class FederatedCredentialServiceTests
         _graphApiService.GraphPostWithResponseAsync(
             TestTenantId,
             Arg.Any<string>(),
-            Arg.Any<string>(),
+            Arg.Any<object>(),
             Arg.Any<CancellationToken>(),
             Arg.Any<IEnumerable<string>?>())
             .Returns(conflictResponse);
@@ -390,7 +396,7 @@ public class FederatedCredentialServiceTests
         // Arrange
         _graphApiService.GraphGetAsync(
             TestTenantId,
-            $"/beta/applications/{TestBlueprintObjectId}/federatedIdentityCredentials",
+            Arg.Any<string>(),
             Arg.Any<CancellationToken>())
             .Throws(new Exception("Network error"));
 
@@ -400,5 +406,113 @@ public class FederatedCredentialServiceTests
         // Assert
         result.Should().NotBeNull();
         result.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task GetFederatedCredentialsAsync_WhenStandardEndpointReturnsEmpty_TriesFallbackEndpoint()
+    {
+        // Arrange
+        var standardEndpoint = $"/beta/applications/{TestBlueprintObjectId}/federatedIdentityCredentials";
+        var fallbackEndpoint = $"/beta/applications/microsoft.graph.agentIdentityBlueprint/{TestBlueprintObjectId}/federatedIdentityCredentials";
+
+        // Standard endpoint returns empty array
+        var emptyResponse = @"{""value"": []}";
+        var emptyJsonDoc = JsonDocument.Parse(emptyResponse);
+
+        _graphApiService.GraphGetAsync(
+            TestTenantId,
+            standardEndpoint,
+            Arg.Any<CancellationToken>())
+            .Returns(emptyJsonDoc);
+
+        // Fallback endpoint returns credentials
+        var fallbackResponse = $@"{{
+            ""value"": [
+                {{
+                    ""id"": ""cred-id-1"",
+                    ""name"": ""AgentBlueprintCredential"",
+                    ""issuer"": ""{TestIssuer}"",
+                    ""subject"": ""{TestMsiPrincipalId}"",
+                    ""audiences"": [""api://AzureADTokenExchange""]
+                }}
+            ]
+        }}";
+        var fallbackJsonDoc = JsonDocument.Parse(fallbackResponse);
+
+        _graphApiService.GraphGetAsync(
+            TestTenantId,
+            fallbackEndpoint,
+            Arg.Any<CancellationToken>())
+            .Returns(fallbackJsonDoc);
+
+        // Act
+        var result = await _service.GetFederatedCredentialsAsync(TestTenantId, TestBlueprintObjectId);
+
+        // Assert
+        result.Should().NotBeNull();
+        result.Should().HaveCount(1);
+        result[0].Name.Should().Be("AgentBlueprintCredential");
+        result[0].Subject.Should().Be(TestMsiPrincipalId);
+
+        // Verify both endpoints were called
+        await _graphApiService.Received(1).GraphGetAsync(
+            TestTenantId,
+            standardEndpoint,
+            Arg.Any<CancellationToken>());
+
+        await _graphApiService.Received(1).GraphGetAsync(
+            TestTenantId,
+            fallbackEndpoint,
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetFederatedCredentialsAsync_WithMalformedCredentials_ReturnsOnlyValidOnes()
+    {
+        // Arrange - JSON response with mixed valid and malformed credentials
+        var jsonResponse = $@"{{
+            ""value"": [
+                {{
+                    ""id"": ""cred-id-1"",
+                    ""name"": ""ValidCredential1"",
+                    ""issuer"": ""{TestIssuer}"",
+                    ""subject"": ""{TestMsiPrincipalId}"",
+                    ""audiences"": [""api://AzureADTokenExchange""]
+                }},
+                {{
+                    ""id"": ""cred-id-2"",
+                    ""name"": ""MissingSubject""
+                }},
+                {{
+                    ""id"": ""cred-id-3"",
+                    ""name"": ""ValidCredential2"",
+                    ""issuer"": ""{TestIssuer}"",
+                    ""subject"": ""different-principal"",
+                    ""audiences"": [""api://AzureADTokenExchange""]
+                }},
+                {{
+                    ""issuer"": ""{TestIssuer}"",
+                    ""subject"": ""another-principal""
+                }}
+            ]
+        }}";
+        var jsonDoc = JsonDocument.Parse(jsonResponse);
+
+        _graphApiService.GraphGetAsync(
+            TestTenantId,
+            $"/beta/applications/{TestBlueprintObjectId}/federatedIdentityCredentials",
+            Arg.Any<CancellationToken>())
+            .Returns(jsonDoc);
+
+        // Act
+        var result = await _service.GetFederatedCredentialsAsync(TestTenantId, TestBlueprintObjectId);
+
+        // Assert
+        result.Should().NotBeNull();
+        result.Should().HaveCount(2); // Only the 2 valid credentials
+        result[0].Name.Should().Be("ValidCredential1");
+        result[0].Subject.Should().Be(TestMsiPrincipalId);
+        result[1].Name.Should().Be("ValidCredential2");
+        result[1].Subject.Should().Be("different-principal");
     }
 }

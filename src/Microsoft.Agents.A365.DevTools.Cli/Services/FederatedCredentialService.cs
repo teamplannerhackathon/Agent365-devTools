@@ -46,10 +46,26 @@ public class FederatedCredentialService
         {
             _logger.LogDebug("Retrieving federated credentials for blueprint: {ObjectId}", blueprintObjectId);
 
+            // Try standard endpoint first
             var doc = await _graphApiService.GraphGetAsync(
                 tenantId,
                 $"/beta/applications/{blueprintObjectId}/federatedIdentityCredentials",
                 cancellationToken);
+
+            // If standard endpoint returns data with credentials, use it
+            if (doc != null && doc.RootElement.TryGetProperty("value", out var valueCheck) && valueCheck.GetArrayLength() > 0)
+            {
+                _logger.LogDebug("Standard endpoint returned {Count} credential(s)", valueCheck.GetArrayLength());
+            }
+            // If standard endpoint returns empty or null, try Agent Blueprint-specific endpoint
+            else
+            {
+                _logger.LogDebug("Standard endpoint returned no credentials or failed, trying Agent Blueprint fallback endpoint");
+                doc = await _graphApiService.GraphGetAsync(
+                    tenantId,
+                    $"/beta/applications/microsoft.graph.agentIdentityBlueprint/{blueprintObjectId}/federatedIdentityCredentials",
+                    cancellationToken);
+            }
 
             if (doc == null)
             {
@@ -66,28 +82,65 @@ public class FederatedCredentialService
             var credentials = new List<FederatedCredentialInfo>();
             foreach (var item in valueElement.EnumerateArray())
             {
-                var id = item.GetProperty("id").GetString();
-                var name = item.GetProperty("name").GetString();
-                var issuer = item.GetProperty("issuer").GetString();
-                var subject = item.GetProperty("subject").GetString();
-                
-                var audiences = new List<string>();
-                if (item.TryGetProperty("audiences", out var audiencesElement))
+                try
                 {
-                    foreach (var audience in audiencesElement.EnumerateArray())
+                    // Use TryGetProperty to handle missing fields gracefully
+                    if (!item.TryGetProperty("id", out var idElement) || string.IsNullOrWhiteSpace(idElement.GetString()))
                     {
-                        audiences.Add(audience.GetString() ?? string.Empty);
+                        _logger.LogWarning("Skipping federated credential with missing or empty 'id' field");
+                        continue;
                     }
-                }
 
-                credentials.Add(new FederatedCredentialInfo
+                    if (!item.TryGetProperty("name", out var nameElement) || string.IsNullOrWhiteSpace(nameElement.GetString()))
+                    {
+                        _logger.LogWarning("Skipping federated credential with missing or empty 'name' field");
+                        continue;
+                    }
+
+                    if (!item.TryGetProperty("issuer", out var issuerElement) || string.IsNullOrWhiteSpace(issuerElement.GetString()))
+                    {
+                        _logger.LogWarning("Skipping federated credential with missing or empty 'issuer' field");
+                        continue;
+                    }
+
+                    if (!item.TryGetProperty("subject", out var subjectElement) || string.IsNullOrWhiteSpace(subjectElement.GetString()))
+                    {
+                        _logger.LogWarning("Skipping federated credential with missing or empty 'subject' field");
+                        continue;
+                    }
+
+                    var id = idElement.GetString();
+                    var name = nameElement.GetString();
+                    var issuer = issuerElement.GetString();
+                    var subject = subjectElement.GetString();
+                    
+                    var audiences = new List<string>();
+                    if (item.TryGetProperty("audiences", out var audiencesElement))
+                    {
+                        foreach (var audience in audiencesElement.EnumerateArray())
+                        {
+                            var audienceValue = audience.GetString();
+                            if (!string.IsNullOrWhiteSpace(audienceValue))
+                            {
+                                audiences.Add(audienceValue);
+                            }
+                        }
+                    }
+
+                    credentials.Add(new FederatedCredentialInfo
+                    {
+                        Id = id,
+                        Name = name,
+                        Issuer = issuer,
+                        Subject = subject,
+                        Audiences = audiences
+                    });
+                }
+                catch (Exception itemEx)
                 {
-                    Id = id,
-                    Name = name,
-                    Issuer = issuer,
-                    Subject = subject,
-                    Audiences = audiences
-                });
+                    // Log individual credential parsing errors but continue processing remaining credentials
+                    _logger.LogWarning(itemEx, "Failed to parse federated credential entry, skipping");
+                }
             }
 
             _logger.LogDebug("Found {Count} federated credential(s) for blueprint: {ObjectId}", 
@@ -146,7 +199,8 @@ public class FederatedCredentialService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to check federated credential existence");
+            _logger.LogWarning(ex, "Failed to retrieve federated credentials for existence check. Assuming credential does not exist.");
+            _logger.LogDebug("Error details: {Message}", ex.Message);
             return new FederatedCredentialCheckResult
             {
                 Exists = false,
@@ -189,88 +243,98 @@ public class FederatedCredentialService
                 audiences
             };
 
-            var payloadJson = JsonSerializer.Serialize(payload);
-
-            // Try the standard endpoint first
-            var endpoint = $"/beta/applications/{blueprintObjectId}/federatedIdentityCredentials";
-            
-            var response = await _graphApiService.GraphPostWithResponseAsync(
-                tenantId,
-                endpoint,
-                payloadJson,
-                cancellationToken);
-
-            if (response.IsSuccess)
+            // Try both standard and Agent Blueprint-specific endpoints
+            var endpoints = new[]
             {
-                _logger.LogInformation("Successfully created federated credential: {Name}", name);
+                $"/beta/applications/{blueprintObjectId}/federatedIdentityCredentials",
+                $"/beta/applications/microsoft.graph.agentIdentityBlueprint/{blueprintObjectId}/federatedIdentityCredentials"
+            };
+
+            foreach (var endpoint in endpoints)
+            {
+                _logger.LogDebug("Attempting federated credential creation with endpoint: {Endpoint}", endpoint);
+                
+                var response = await _graphApiService.GraphPostWithResponseAsync(
+                    tenantId,
+                    endpoint,
+                    payload,
+                    cancellationToken);
+
+                if (response.IsSuccess)
+                {
+                    _logger.LogInformation("Successfully created federated credential: {Name}", name);
+                    return new FederatedCredentialCreateResult
+                    {
+                        Success = true,
+                        AlreadyExisted = false
+                    };
+                }
+
+                // Check for HTTP 409 (Conflict) - credential already exists
+                if (response.StatusCode == 409)
+                {
+                    _logger.LogInformation("Federated credential already exists: {Name}", name);
+                    
+                    return new FederatedCredentialCreateResult
+                    {
+                        Success = true,
+                        AlreadyExisted = true
+                    };
+                }
+
+                // Check if we should try the alternative endpoint
+                if (response.StatusCode == 403 && response.Body?.Contains("Agent Blueprints are not supported") == true)
+                {
+                    _logger.LogDebug("Standard endpoint not supported for Agent Blueprints, trying specialized endpoint...");
+                    continue;
+                }
+
+                // Check if we should try the alternative endpoint due to calling identity type
+                if (response.StatusCode == 403 && response.Body?.Contains("This operation cannot be performed for the specified calling identity type") == true)
+                {
+                    _logger.LogDebug("Endpoint rejected calling identity type, trying alternative endpoint...");
+                    continue;
+                }
+
+                // Check for HTTP 404 - resource not found (propagation delay)
+                if (response.StatusCode == 404)
+                {
+                    _logger.LogDebug("Application not yet ready (HTTP 404), will retry...");
+                    return new FederatedCredentialCreateResult
+                    {
+                        Success = false,
+                        ErrorMessage = $"HTTP {response.StatusCode}: {response.ReasonPhrase}",
+                        ShouldRetry = true
+                    };
+                }
+
+                // For other errors on first endpoint, try second endpoint
+                if (endpoint == endpoints[0])
+                {
+                    _logger.LogDebug("First endpoint failed with HTTP {StatusCode}, trying second endpoint...", response.StatusCode);
+                    continue;
+                }
+
+                // Both endpoints failed
+                _logger.LogError("Failed to create federated credential: HTTP {StatusCode} {ReasonPhrase}", response.StatusCode, response.ReasonPhrase);
+                if (!string.IsNullOrWhiteSpace(response.Body))
+                {
+                    _logger.LogError("Error details: {Body}", response.Body);
+                }
+
+                _logger.LogError("Failed to create federated credential: {Name}", name);
                 return new FederatedCredentialCreateResult
                 {
-                    Success = true,
-                    AlreadyExisted = false
+                    Success = false,
+                    ErrorMessage = $"HTTP {response.StatusCode}: {response.ReasonPhrase}"
                 };
             }
 
-            // Check for HTTP 409 (Conflict) - credential already exists
-            if (response.StatusCode == 409)
-            {
-                _logger.LogDebug("Federated credential already exists (HTTP 409): {Name}", name);
-                return new FederatedCredentialCreateResult
-                {
-                    Success = true,
-                    AlreadyExisted = true
-                };
-            }
-
-            // Log error details from standard endpoint
-            _logger.LogWarning("Standard endpoint failed: HTTP {StatusCode} {ReasonPhrase}", response.StatusCode, response.ReasonPhrase);
-            if (!string.IsNullOrWhiteSpace(response.Body))
-            {
-                _logger.LogDebug("Response body: {Body}", response.Body);
-            }
-
-            // Try fallback endpoint for agent blueprint
-            _logger.LogDebug("Trying fallback endpoint for agent blueprint federated credential");
-            endpoint = $"/beta/applications/microsoft.graph.agentIdentityBlueprint/{blueprintObjectId}/federatedIdentityCredentials";
-            
-            response = await _graphApiService.GraphPostWithResponseAsync(
-                tenantId,
-                endpoint,
-                payloadJson,
-                cancellationToken);
-
-            if (response.IsSuccess)
-            {
-                _logger.LogInformation("Successfully created federated credential using fallback endpoint: {Name}", name);
-                return new FederatedCredentialCreateResult
-                {
-                    Success = true,
-                    AlreadyExisted = false
-                };
-            }
-
-            // Check for HTTP 409 (Conflict) - credential already exists
-            if (response.StatusCode == 409)
-            {
-                _logger.LogDebug("Federated credential already exists (HTTP 409) on fallback endpoint: {Name}", name);
-                return new FederatedCredentialCreateResult
-                {
-                    Success = true,
-                    AlreadyExisted = true
-                };
-            }
-
-            // Log error details from fallback endpoint
-            _logger.LogError("Fallback endpoint also failed: HTTP {StatusCode} {ReasonPhrase}", response.StatusCode, response.ReasonPhrase);
-            if (!string.IsNullOrWhiteSpace(response.Body))
-            {
-                _logger.LogDebug("Response body: {Body}", response.Body);
-            }
-
-            _logger.LogError("Failed to create federated credential: {Name}. Both standard and fallback endpoints returned errors.", name);
+            // Should not reach here, but handle it
             return new FederatedCredentialCreateResult
             {
                 Success = false,
-                ErrorMessage = $"HTTP {response.StatusCode}: {response.ReasonPhrase}"
+                ErrorMessage = "Failed after trying all endpoints"
             };
         }
         catch (Exception ex)
@@ -281,6 +345,129 @@ public class FederatedCredentialService
                 Success = false,
                 ErrorMessage = ex.Message
             };
+        }
+    }
+
+    /// <summary>
+    /// Delete a federated credential from a blueprint application.
+    /// </summary>
+    /// <param name="tenantId">The tenant ID for authentication</param>
+    /// <param name="blueprintObjectId">The blueprint application object ID</param>
+    /// <param name="credentialId">The federated credential ID to delete</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>True if deleted successfully or not found, false otherwise</returns>
+    public async Task<bool> DeleteFederatedCredentialAsync(
+        string tenantId,
+        string blueprintObjectId,
+        string credentialId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogDebug("Deleting federated credential: {CredentialId} from blueprint: {ObjectId}", 
+                credentialId, blueprintObjectId);
+
+            // Try the standard endpoint first
+            var endpoint = $"/beta/applications/{blueprintObjectId}/federatedIdentityCredentials/{credentialId}";
+            
+            var success = await _graphApiService.GraphDeleteAsync(
+                tenantId,
+                endpoint,
+                cancellationToken,
+                treatNotFoundAsSuccess: true);
+
+            if (success)
+            {
+                _logger.LogDebug("Successfully deleted federated credential using standard endpoint: {CredentialId}", credentialId);
+                return true;
+            }
+
+            // Try fallback endpoint for agent blueprint
+            _logger.LogDebug("Standard endpoint failed, trying fallback endpoint for agent blueprint");
+            endpoint = $"/beta/applications/microsoft.graph.agentIdentityBlueprint/{blueprintObjectId}/federatedIdentityCredentials/{credentialId}";
+            
+            success = await _graphApiService.GraphDeleteAsync(
+                tenantId,
+                endpoint,
+                cancellationToken,
+                treatNotFoundAsSuccess: true);
+
+            if (success)
+            {
+                _logger.LogDebug("Successfully deleted federated credential using fallback endpoint: {CredentialId}", credentialId);
+                return true;
+            }
+
+            _logger.LogWarning("Failed to delete federated credential using both endpoints: {CredentialId}", credentialId);
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Exception deleting federated credential: {CredentialId}", credentialId);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Delete all federated credentials from a blueprint application.
+    /// </summary>
+    /// <param name="tenantId">The tenant ID for authentication</param>
+    /// <param name="blueprintObjectId">The blueprint application object ID</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>True if all credentials deleted successfully, false otherwise</returns>
+    public async Task<bool> DeleteAllFederatedCredentialsAsync(
+        string tenantId,
+        string blueprintObjectId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogInformation("Retrieving federated credentials for deletion from blueprint: {ObjectId}", blueprintObjectId);
+            
+            var credentials = await GetFederatedCredentialsAsync(tenantId, blueprintObjectId, cancellationToken);
+            
+            if (credentials.Count == 0)
+            {
+                _logger.LogInformation("No federated credentials found to delete");
+                return true;
+            }
+
+            _logger.LogInformation("Found {Count} federated credential(s) to delete", credentials.Count);
+            
+            bool allSuccess = true;
+            foreach (var credential in credentials)
+            {
+                if (string.IsNullOrWhiteSpace(credential.Id))
+                {
+                    _logger.LogWarning("Skipping credential with missing ID");
+                    continue;
+                }
+
+                _logger.LogInformation("Deleting federated credential: {Name}", credential.Name ?? credential.Id);
+                
+                var deleted = await DeleteFederatedCredentialAsync(
+                    tenantId,
+                    blueprintObjectId,
+                    credential.Id,
+                    cancellationToken);
+
+                if (deleted)
+                {
+                    _logger.LogInformation("Federated credential deleted: {Name}", credential.Name ?? credential.Id);
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to delete federated credential: {Name}", credential.Name ?? credential.Id);
+                    allSuccess = false;
+                }
+            }
+
+            return allSuccess;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Exception deleting federated credentials from blueprint: {ObjectId}", blueprintObjectId);
+            return false;
         }
     }
 }
@@ -315,4 +502,5 @@ public class FederatedCredentialCreateResult
     public bool Success { get; set; }
     public bool AlreadyExisted { get; set; }
     public string? ErrorMessage { get; set; }
+    public bool ShouldRetry { get; set; }
 }
