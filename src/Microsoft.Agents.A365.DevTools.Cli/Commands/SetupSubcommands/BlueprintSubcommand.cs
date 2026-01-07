@@ -626,7 +626,7 @@ internal static class BlueprintSubcommand
             if (string.IsNullOrWhiteSpace(existingAppId) || string.IsNullOrWhiteSpace(existingObjectId))
             {
                 logger.LogError("Existing blueprint found but required identifiers are missing (AppId: {AppId}, ObjectId: {ObjectId})", 
-                    existingAppId ?? "(null)", existingObjectId ?? "(null)");
+                    existingAppId, existingObjectId);
                 return (false, null, null, null, alreadyExisted: false);
             }
 
@@ -932,10 +932,9 @@ internal static class BlueprintSubcommand
         if (useManagedIdentity && !string.IsNullOrWhiteSpace(managedIdentityPrincipalId))
         {
             logger.LogInformation("Configuring Federated Identity Credential for Managed Identity...");
-            // Include full blueprint object ID to ensure absolute uniqueness across tenant
-            // FIC names have tenant-wide uniqueness constraints, not scoped to individual blueprints
-            // Using full objectId guarantees no collisions even with rapid create/delete cycles
-            var credentialName = $"{displayName.Replace(" ", "")}-{objectId}-MSI";
+            // Federated credential names are scoped to the application and only need to be unique per app.
+            // Use a readable name based on the display name, with whitespace removed and "-MSI" suffix.
+            var credentialName = $"{displayName.Replace(" ", "")}-MSI";
 
             // For existing blueprints, check if FIC already exists to provide better UX
             // For new blueprints, we skip this and go straight to create (avoiding race conditions)
@@ -969,7 +968,7 @@ internal static class BlueprintSubcommand
                     var retryHelper = new RetryHelper(logger);
                     FederatedCredentialCreateResult? ficCreateResult = null;
                     
-                    var ficReady = await retryHelper.ExecuteWithRetryAsync(
+                    await retryHelper.ExecuteWithRetryAsync(
                         async ct =>
                         {
                             ficCreateResult = await federatedCredentialService.CreateFederatedCredentialAsync(
@@ -1018,7 +1017,7 @@ internal static class BlueprintSubcommand
                 var retryHelper = new RetryHelper(logger);
                 FederatedCredentialCreateResult? ficCreateResult = null;
                 
-                var ficReady = await retryHelper.ExecuteWithRetryAsync(
+                await retryHelper.ExecuteWithRetryAsync(
                     async ct =>
                     {
                         ficCreateResult = await federatedCredentialService.CreateFederatedCredentialAsync(
