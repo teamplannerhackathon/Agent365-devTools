@@ -28,7 +28,7 @@
 - Classes with different lifecycle or ownership
 
 ### Cross-Platform Compatibility
-- All code must work on both Windows and macOS
+- All code must work on Windows, macOS, and Linux
 - Test file paths, line endings, and shell commands for compatibility
 
 ### Testing Standards

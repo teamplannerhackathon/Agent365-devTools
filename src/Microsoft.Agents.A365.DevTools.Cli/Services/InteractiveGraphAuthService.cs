@@ -79,7 +79,7 @@ public sealed class InteractiveGraphAuthService
         _logger.LogInformation("Attempting to authenticate to Microsoft Graph interactively...");
         _logger.LogInformation("This requires permissions defined in AuthenticationConstants.RequiredClientAppPermissions for Agent Blueprint operations.");
         _logger.LogInformation("");
-        _logger.LogInformation("IMPORTANT: A browser window will open for authentication.");
+        _logger.LogInformation("IMPORTANT: Interactive authentication is required.");
         _logger.LogInformation("Please sign in with an account that has Global Administrator or similar privileges.");
         _logger.LogInformation("");
 
@@ -89,18 +89,15 @@ public sealed class InteractiveGraphAuthService
         
         try
         {
-            // Use MSAL directly with .WithUseEmbeddedWebView(false) to force system browser.
-            // This avoids Windows Authentication Broker (WAM) issues that can occur with
-            // Azure.Identity's InteractiveBrowserCredential on some Windows configurations.
-            // Fixes GitHub issues #146 and #151.
-            // See: https://learn.microsoft.com/en-us/entra/msal/dotnet/acquiring-tokens/desktop-mobile/wam
+            // Use MsalBrowserCredential which handles WAM on Windows and browser on other platforms
+            // Pass null for redirectUri to let MsalBrowserCredential decide based on platform
             var browserCredential = new MsalBrowserCredential(
                 _clientAppId,
                 tenantId,
-                AuthenticationConstants.LocalhostRedirectUri,
+                redirectUri: null,  // Let MsalBrowserCredential use WAM on Windows
                 _logger);
             
-            _logger.LogInformation("Opening browser for authentication...");
+            _logger.LogInformation("Authenticating to Microsoft Graph...");
             _logger.LogInformation("IMPORTANT: You must grant consent for all required permissions.");
             _logger.LogInformation("Required permissions are defined in AuthenticationConstants.RequiredClientAppPermissions.");
             _logger.LogInformation($"See {ConfigConstants.Agent365CliDocumentationUrl} for the complete list.");

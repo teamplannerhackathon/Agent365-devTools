@@ -5,16 +5,15 @@ using Azure.Core;
 using Microsoft.Agents.A365.DevTools.Cli.Constants;
 using Microsoft.Extensions.Logging;
 using Microsoft.Identity.Client;
+using Microsoft.Identity.Client.Broker;
+using System.Runtime.InteropServices;
 
 namespace Microsoft.Agents.A365.DevTools.Cli.Services;
 
 /// <summary>
-/// A custom TokenCredential that uses MSAL directly for interactive browser authentication.
-/// This provides better control over the authentication flow and avoids Windows Authentication
-/// Broker (WAM) issues that can occur with Azure.Identity's InteractiveBrowserCredential.
-/// 
-/// Uses PublicClientApplicationBuilder with .WithUseEmbeddedWebView(false) to force
-/// the system browser, which is the recommended approach for console applications.
+/// A custom TokenCredential that uses MSAL directly for interactive authentication.
+/// On Windows, this uses WAM (Windows Authentication Broker) for a native sign-in experience
+/// that doesn't require opening a browser. On other platforms, it falls back to system browser.
 /// 
 /// See: https://learn.microsoft.com/en-us/entra/msal/dotnet/acquiring-tokens/desktop-mobile/wam
 /// Fixes GitHub issues #146 and #151.
@@ -24,6 +23,18 @@ public sealed class MsalBrowserCredential : TokenCredential
     private readonly IPublicClientApplication _publicClientApp;
     private readonly ILogger? _logger;
     private readonly string _tenantId;
+    private readonly bool _useWam;
+    private readonly IntPtr _windowHandle;
+
+    // P/Invoke to get window handles for WAM on Windows
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr GetConsoleWindow();
+    
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetDesktopWindow();
+    
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
 
     /// <summary>
     /// Creates a new instance of MsalBrowserCredential.
@@ -32,11 +43,13 @@ public sealed class MsalBrowserCredential : TokenCredential
     /// <param name="tenantId">The directory (tenant) ID.</param>
     /// <param name="redirectUri">The redirect URI for authentication callbacks.</param>
     /// <param name="logger">Optional logger for diagnostic output.</param>
+    /// <param name="useWam">Whether to use WAM on Windows. Default is true.</param>
     public MsalBrowserCredential(
         string clientId,
         string tenantId,
         string? redirectUri = null,
-        ILogger? logger = null)
+        ILogger? logger = null,
+        bool useWam = true)
     {
         if (string.IsNullOrWhiteSpace(clientId))
         {
@@ -50,14 +63,69 @@ public sealed class MsalBrowserCredential : TokenCredential
 
         _tenantId = tenantId;
         _logger = logger;
+        
+        // Get window handle for WAM on Windows
+        // Try multiple sources: console window, foreground window, or desktop window
+        _windowHandle = IntPtr.Zero;
+        _useWam = useWam && RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+        
+        if (_useWam)
+        {
+            try
+            {
+                // Try console window first (works for cmd.exe, PowerShell)
+                _windowHandle = GetConsoleWindow();
+                
+                // If no console window, try foreground window (works for Windows Terminal)
+                if (_windowHandle == IntPtr.Zero)
+                {
+                    _windowHandle = GetForegroundWindow();
+                }
+                
+                // Last resort: use desktop window (always valid)
+                if (_windowHandle == IntPtr.Zero)
+                {
+                    _windowHandle = GetDesktopWindow();
+                }
+                
+                _logger?.LogDebug("Window handle for WAM: {Handle}", _windowHandle);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Failed to get window handle, falling back to system browser");
+                _useWam = false;
+            }
+        }
 
-        var effectiveRedirectUri = redirectUri ?? AuthenticationConstants.LocalhostRedirectUri;
-
-        _publicClientApp = PublicClientApplicationBuilder
+        var builder = PublicClientApplicationBuilder
             .Create(clientId)
-            .WithAuthority(AzureCloudInstance.AzurePublic, tenantId)
-            .WithRedirectUri(effectiveRedirectUri)
-            .Build();
+            .WithAuthority(AzureCloudInstance.AzurePublic, tenantId);
+
+        if (_useWam)
+        {
+            // Use WAM broker on Windows for native authentication experience
+            // WAM provides SSO with Windows accounts and doesn't require browser
+            _logger?.LogDebug("Configuring WAM broker for Windows authentication");
+            
+            var brokerOptions = new BrokerOptions(BrokerOptions.OperatingSystems.Windows)
+            {
+                Title = "Agent365 Tools Authentication"
+            };
+            
+            builder = builder
+                .WithBroker(brokerOptions)
+                .WithParentActivityOrWindow(() => _windowHandle)
+                .WithRedirectUri($"ms-appx-web://microsoft.aad.brokerplugin/{clientId}");
+        }
+        else
+        {
+            // Use system browser on non-Windows platforms or when WAM isn't available
+            _logger?.LogDebug("Using system browser for authentication");
+            var effectiveRedirectUri = redirectUri ?? AuthenticationConstants.LocalhostRedirectUri;
+            builder = builder.WithRedirectUri(effectiveRedirectUri);
+        }
+
+        _publicClientApp = builder.Build();
     }
 
     /// <inheritdoc/>
@@ -97,15 +165,28 @@ public sealed class MsalBrowserCredential : TokenCredential
                 }
             }
 
-            // Acquire token interactively using system browser (not WAM)
-            _logger?.LogInformation("Opening browser for authentication...");
+            // Acquire token interactively
+            AuthenticationResult interactiveResult;
+            
+            if (_useWam)
+            {
+                // WAM on Windows - native authentication dialog, no browser needed
+                _logger?.LogInformation("Authenticating via Windows Account Manager...");
+                interactiveResult = await _publicClientApp
+                    .AcquireTokenInteractive(scopes)
+                    .ExecuteAsync(cancellationToken);
+            }
+            else
+            {
+                // System browser on Mac/Linux
+                _logger?.LogInformation("Opening browser for authentication...");
+                interactiveResult = await _publicClientApp
+                    .AcquireTokenInteractive(scopes)
+                    .WithUseEmbeddedWebView(false)
+                    .ExecuteAsync(cancellationToken);
+            }
 
-            var interactiveResult = await _publicClientApp
-                .AcquireTokenInteractive(scopes)
-                .WithUseEmbeddedWebView(false) // Force system browser, avoid WAM issues
-                .ExecuteAsync(cancellationToken);
-
-            _logger?.LogDebug("Successfully acquired token via interactive browser authentication.");
+            _logger?.LogDebug("Successfully acquired token via interactive authentication.");
             return new AccessToken(interactiveResult.AccessToken, interactiveResult.ExpiresOn);
         }
         catch (MsalException ex)

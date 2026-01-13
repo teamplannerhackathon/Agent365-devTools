@@ -193,20 +193,15 @@ public class AuthenticationService
 
             if (useInteractiveBrowser)
             {
-                // Use MSAL directly with .WithUseEmbeddedWebView(false) to force system browser.
-                // This avoids Windows Authentication Broker (WAM) issues that can occur with
-                // Azure.Identity's InteractiveBrowserCredential on some Windows configurations.
-                // Fixes GitHub issues #146 and #151.
-                // See: https://learn.microsoft.com/en-us/entra/msal/dotnet/acquiring-tokens/desktop-mobile/wam
-                _logger.LogInformation("Using interactive browser authentication...");
-                _logger.LogInformation("IMPORTANT: A browser window will open for authentication.");
+                // Use MsalBrowserCredential which handles WAM on Windows and browser on other platforms
+                _logger.LogInformation("Using interactive authentication...");
                 _logger.LogInformation("Please sign in with your Microsoft account and grant consent for the requested permissions.");
                 _logger.LogInformation("");
 
                 credential = new MsalBrowserCredential(
                     effectiveClientId,
                     effectiveTenantId,
-                    AuthenticationConstants.LocalhostRedirectUri,
+                    redirectUri: null,  // Let MsalBrowserCredential use WAM on Windows
                     _logger);
             }
             else
