@@ -193,28 +193,25 @@ public class AuthenticationService
 
             if (useInteractiveBrowser)
             {
-                // Use InteractiveBrowserCredential with redirect URI for better public client support
+                // Use MSAL directly with .WithUseEmbeddedWebView(false) to force system browser.
+                // This avoids Windows Authentication Broker (WAM) issues that can occur with
+                // Azure.Identity's InteractiveBrowserCredential on some Windows configurations.
+                // Fixes GitHub issues #146 and #151.
+                // See: https://learn.microsoft.com/en-us/entra/msal/dotnet/acquiring-tokens/desktop-mobile/wam
                 _logger.LogInformation("Using interactive browser authentication...");
                 _logger.LogInformation("IMPORTANT: A browser window will open for authentication.");
                 _logger.LogInformation("Please sign in with your Microsoft account and grant consent for the requested permissions.");
                 _logger.LogInformation("");
 
-                credential = new InteractiveBrowserCredential(new InteractiveBrowserCredentialOptions
-                {
-                    TenantId = effectiveTenantId,
-                    ClientId = effectiveClientId,
-                    AuthorityHost = AzureAuthorityHosts.AzurePublicCloud,
-                    RedirectUri = new Uri(AuthenticationConstants.LocalhostRedirectUri),
-                    TokenCachePersistenceOptions = new TokenCachePersistenceOptions
-                    {
-                        Name = AuthenticationConstants.ApplicationName
-                    }
-                });
+                credential = new MsalBrowserCredential(
+                    effectiveClientId,
+                    effectiveTenantId,
+                    AuthenticationConstants.LocalhostRedirectUri,
+                    _logger);
             }
             else
             {
-                // For Power Platform API authentication, use device code flow to avoid URL length issues
-                // InteractiveBrowserCredential with Power Platform scopes can create URLs that exceed browser limits
+                // Device code flow - works in all environments including SSH/remote sessions
                 _logger.LogInformation("Using device code authentication...");
                 _logger.LogInformation("Please sign in with your Microsoft account");
 

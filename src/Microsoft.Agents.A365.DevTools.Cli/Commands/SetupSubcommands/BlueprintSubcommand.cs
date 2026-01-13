@@ -1214,19 +1214,22 @@ internal static class BlueprintSubcommand
 
     /// <summary>
     /// Extracts the access token from a GraphServiceClient for use in direct HTTP calls.
-    /// This uses InteractiveBrowserCredential directly which is simpler and more reliable.
+    /// This uses MSAL directly with .WithUseEmbeddedWebView(false) to force system browser.
     /// </summary>
     private static async Task<string?> GetTokenFromGraphClient(ILogger logger, GraphServiceClient graphClient, string tenantId, string clientAppId)
     {
         try
         {
-            // Use Azure.Identity to get the token directly
-            // This is cleaner and more reliable than trying to extract it from GraphServiceClient
-            var credential = new InteractiveBrowserCredential(new InteractiveBrowserCredentialOptions
-            {
-                TenantId = tenantId,
-                ClientId = clientAppId
-            });
+            // Use MSAL directly with .WithUseEmbeddedWebView(false) to force system browser.
+            // This avoids Windows Authentication Broker (WAM) issues that can occur with
+            // Azure.Identity's InteractiveBrowserCredential on some Windows configurations.
+            // Fixes GitHub issues #146 and #151.
+            // See: https://learn.microsoft.com/en-us/entra/msal/dotnet/acquiring-tokens/desktop-mobile/wam
+            var credential = new MsalBrowserCredential(
+                clientAppId,
+                tenantId,
+                AuthenticationConstants.LocalhostRedirectUri,
+                logger);
 
             var tokenRequestContext = new TokenRequestContext(new[] { "https://graph.microsoft.com/.default" });
             var token = await credential.GetTokenAsync(tokenRequestContext, CancellationToken.None);
