@@ -341,57 +341,59 @@ You should already have the `clientAppId` from the Step 2 validation.
 
 Set `deploymentProjectPath` to the current working directory (use absolute path).
 
-### Step 3.2: Collect user inputs
+### Step 3.2: Collect user inputs (two-phase prompt)
 
-Present **all required inputs in a single prompt** so the user can provide everything at once. Each field must include a clear description and examples so the user can provide informed values without follow-up questions.
+Collect inputs in **two phases**: first ask the deployment type question, wait for the answer, then present the relevant fields based on that answer.
 
-#### Prompt template
+#### Phase 1: Ask deployment type first
 
-Display the following to the user in a single message. Use this exact format:
+Ask the user — and **wait for their answer** before proceeding:
 
----
+**"Do you want to create a web app in Azure for this agent? (yes/no)"**
 
-**I need the following information to configure your agent. Please provide a value for each field:**
+- **Yes (Azure-hosted)**: The CLI will create an Azure App Service (web app) to host your agent. Recommended for production — Azure handles scaling, SSL, and availability.
+- **No (Self-hosted)**: You will host the agent yourself (e.g., locally for development using a dev tunnel). You must provide a publicly accessible HTTPS endpoint.
 
-**1. Deployment type** — Do you want to create a web app in Azure for this agent? (`yes` or `no`)
-   - **Yes (Azure-hosted)**: The CLI will create an Azure App Service web app to host your agent. Recommended for production — Azure handles scaling, SSL, and availability.
-   - **No (Self-hosted)**: You will host the agent yourself (locally with a dev tunnel, another cloud, on-premises, etc.). You will need a publicly accessible HTTPS endpoint.
+Set the internal value based on the answer:
+- If **yes**: Set `needDeployment: true`. Proceed to Phase 2A.
+- If **no**: Set `needDeployment: false`. Proceed to Phase 2B.
 
-**2. Agent name** — A unique name for your agent ⚠️ **Must be GLOBALLY UNIQUE across all of Azure**
-   - This name is used to derive the web app URL (`{name}-webapp.azurewebsites.net`), Agent Identity, Blueprint, and User Principal Name. If the name is already taken, deployment will fail later.
-   - Use only lowercase letters, numbers, and hyphens. Start with a letter. 3-20 characters recommended.
-   - Tip: Include your org name to ensure uniqueness.
-   - *Examples: `contoso-support-agent`, `mycompany-hr-bot-2025`*
+#### Phase 2A: Azure-hosted deployment inputs
 
-**3. Resource group** — The Azure Resource Group where Agent 365 resources will be created
-   - You can use an existing resource group or provide a new name (it will be created automatically).
-   - *Examples: `a365-agents-rg`, `mycompany-agent365-resources`*
+If the user chose **yes** (Azure-hosted), present the following fields in a single prompt:
 
-**4. Azure region** — The Azure region where resources will be deployed
-   - Choose a region close to your users for best performance.
-   - *Examples: `eastus`, `westus2`, `canadacentral`, `westeurope`, `australiaeast`*
+**"Please provide the following values to configure your Azure-hosted agent:"**
 
-**5. Manager email** — The email of the person who will manage this agent in Microsoft 365
-   - Must be a valid email from your organization's tenant (the same tenant you're logged into).
-   - *Examples: `admin@contoso.onmicrosoft.com`, `agent-admin@yourcompany.com`*
+| # | Field | Description |
+|---|-------|-------------|
+| 1 | **Resource Group** | The Azure Resource Group where Agent 365 resources will be created. You can use an existing group or provide a new name (it will be created automatically).<br>*Examples: `a365-agents-rg`, `mycompany-agent365-resources`* |
+| 2 | **Location** | The Azure region where resources will be deployed. Choose a region close to your users for best performance.<br>*Examples: `eastus`, `westus2`, `canadacentral`, `westeurope`, `australiaeast`* |
+| 3 | **Agent Name** | ⚠️ **Must be GLOBALLY UNIQUE across all of Azure.** This name is used to derive the web app URL (`{name}-webapp.azurewebsites.net`), Agent Identity, Blueprint, and User Principal Name. If the name is already taken, deployment will fail.<br>Use only lowercase letters, numbers, and hyphens. Start with a letter. 3-20 characters recommended. Tip: include your org name to ensure uniqueness.<br>*Examples: `contoso-support-agent`, `mycompany-hr-bot-2025`* |
+| 4 | **Manager Email** | The email of the person who will manage this agent in Microsoft 365. Must be a valid email from your organization's tenant (the same tenant you're logged into).<br>*Examples: `admin@contoso.onmicrosoft.com`, `agent-admin@yourcompany.com`* |
+| 5 | **App Service Plan Name** | Name for the Azure App Service Plan that will host your agent's web app. Use an existing plan name or provide a new one.<br>*Examples: `myagent-app-plan`, `contoso-agents-plan`* |
 
-**6. App Service Plan name** *(only if you chose Azure-hosted in #1)* — Name for the Azure App Service Plan
-   - Defines the compute resources for the web app. Use an existing plan name or provide a new one.
-   - *Examples: `myagent-app-plan`, `contoso-agents-plan`*
+#### Phase 2B: Self-hosted deployment inputs
 
----
+If the user chose **no** (self-hosted), present the following fields in a single prompt:
 
-#### After receiving the user's answers
+**"Please provide the following values to configure your self-hosted agent:"**
+
+| # | Field | Description |
+|---|-------|-------------|
+| 1 | **Agent Name** | ⚠️ **Must be GLOBALLY UNIQUE across all of Azure.** This name is used to derive the Agent Identity, Blueprint, and User Principal Name. If the name is already taken, setup will fail.<br>Use only lowercase letters, numbers, and hyphens. Start with a letter. 3-20 characters recommended. Tip: include your org name to ensure uniqueness.<br>*Examples: `contoso-support-agent`, `mycompany-hr-bot-2025`* |
+| 2 | **Manager Email** | The email of the person who will manage this agent in Microsoft 365. Must be a valid email from your organization's tenant (the same tenant you're logged into).<br>*Examples: `admin@contoso.onmicrosoft.com`, `agent-admin@yourcompany.com`* |
+
+After collecting these inputs, proceed to Step 3.2.1 to determine the messaging endpoint.
+
+#### After receiving the user's answers (both phases)
 
 1. **Validate the inputs** — Check that all required fields are provided, the email format looks valid, and the agent name meets the naming requirements.
 2. **If any field is missing or unclear**, ask only about that specific field — do not re-ask for all inputs.
-3. **Set internal values** based on the deployment type answer:
-   - If deployment type = yes: Set `needDeployment: true`.
-   - If deployment type = no: Set `needDeployment: false`. Proceed to Step 3.2.1 to determine the messaging endpoint.
+3. **Proceed** to Step 3.3 (or Step 3.2.1 first for self-hosted deployments).
 
 #### Step 3.2.1: Determine messaging endpoint (non-Azure deployments only)
 
-Only perform this step if the user chose self-hosted deployment (deployment type = no).
+Only perform this step if the user chose self-hosted deployment.
 
 Ask: **"Would you like to use a dev tunnel for local development, or provide a custom messaging endpoint? (devtunnel/custom)"**
 
