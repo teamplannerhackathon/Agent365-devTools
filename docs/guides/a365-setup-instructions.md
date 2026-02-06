@@ -341,24 +341,59 @@ You should already have the `clientAppId` from the Step 2 validation.
 
 Set `deploymentProjectPath` to the current working directory (use absolute path).
 
-### Step 3.2: Determine deployment type
+### Step 3.2: Collect user inputs
 
-Ask the user:
+Present **all required inputs in a single prompt** so the user can provide everything at once. Each field must include a clear description and examples so the user can provide informed values without follow-up questions.
 
-**"Do you want to create a web app in Azure for this agent? (yes/no)"**
+#### Prompt template
 
-Provide this context to help them decide:
-- **Yes (Azure-hosted)**: The CLI will create an Azure App Service (web app) to host your agent. This is recommended for production deployments. Azure handles scaling, SSL, and availability. You will need an Azure subscription with permissions to create resources.
-- **No (Self-hosted)**: You will host the agent yourself (on-premises, another cloud provider, or locally for development). You must provide a publicly accessible HTTPS endpoint where the agent can receive messages.
+Display the following to the user in a single message. Use this exact format:
 
-- If **yes**: This is an Azure-hosted deployment. Set `needDeployment: true`. You will need to ask for the `appServicePlanName`.
-- If **no**: This is a non-Azure hosted deployment. Set `needDeployment: false`. Proceed to Step 3.2.1 to determine the messaging endpoint.
+---
 
-#### Step 3.2.1: Determine messaging endpoint for non-Azure deployments
+**I need the following information to configure your agent. Please provide a value for each field:**
 
-For non-Azure hosted deployments, ask the user:
+**1. Deployment type** — Do you want to create a web app in Azure for this agent? (`yes` or `no`)
+   - **Yes (Azure-hosted)**: The CLI will create an Azure App Service web app to host your agent. Recommended for production — Azure handles scaling, SSL, and availability.
+   - **No (Self-hosted)**: You will host the agent yourself (locally with a dev tunnel, another cloud, on-premises, etc.). You will need a publicly accessible HTTPS endpoint.
 
-**"Would you like to use a dev tunnel for local development, or provide a custom messaging endpoint? (devtunnel/custom)"**
+**2. Agent name** — A unique name for your agent ⚠️ **Must be GLOBALLY UNIQUE across all of Azure**
+   - This name is used to derive the web app URL (`{name}-webapp.azurewebsites.net`), Agent Identity, Blueprint, and User Principal Name. If the name is already taken, deployment will fail later.
+   - Use only lowercase letters, numbers, and hyphens. Start with a letter. 3-20 characters recommended.
+   - Tip: Include your org name to ensure uniqueness.
+   - *Examples: `contoso-support-agent`, `mycompany-hr-bot-2025`*
+
+**3. Resource group** — The Azure Resource Group where Agent 365 resources will be created
+   - You can use an existing resource group or provide a new name (it will be created automatically).
+   - *Examples: `a365-agents-rg`, `mycompany-agent365-resources`*
+
+**4. Azure region** — The Azure region where resources will be deployed
+   - Choose a region close to your users for best performance.
+   - *Examples: `eastus`, `westus2`, `canadacentral`, `westeurope`, `australiaeast`*
+
+**5. Manager email** — The email of the person who will manage this agent in Microsoft 365
+   - Must be a valid email from your organization's tenant (the same tenant you're logged into).
+   - *Examples: `admin@contoso.onmicrosoft.com`, `agent-admin@yourcompany.com`*
+
+**6. App Service Plan name** *(only if you chose Azure-hosted in #1)* — Name for the Azure App Service Plan
+   - Defines the compute resources for the web app. Use an existing plan name or provide a new one.
+   - *Examples: `myagent-app-plan`, `contoso-agents-plan`*
+
+---
+
+#### After receiving the user's answers
+
+1. **Validate the inputs** — Check that all required fields are provided, the email format looks valid, and the agent name meets the naming requirements.
+2. **If any field is missing or unclear**, ask only about that specific field — do not re-ask for all inputs.
+3. **Set internal values** based on the deployment type answer:
+   - If deployment type = yes: Set `needDeployment: true`.
+   - If deployment type = no: Set `needDeployment: false`. Proceed to Step 3.2.1 to determine the messaging endpoint.
+
+#### Step 3.2.1: Determine messaging endpoint (non-Azure deployments only)
+
+Only perform this step if the user chose self-hosted deployment (deployment type = no).
+
+Ask: **"Would you like to use a dev tunnel for local development, or provide a custom messaging endpoint? (devtunnel/custom)"**
 
 Provide this context:
 - **Dev tunnel**: Creates a secure tunnel from the internet to your local machine. Ideal for development and testing - no need to deploy your code anywhere. The tunnel URL will be your messaging endpoint.
@@ -369,152 +404,7 @@ Provide this context:
 
 #### Step 3.2.2: Set up a dev tunnel (for local development)
 
-Dev tunnels provide a secure way to expose your local agent to the internet, which is useful for development and testing. Follow these steps to set up a dev tunnel:
-
-##### Prerequisites for dev tunnels
-
-1. **Install the Dev Tunnels CLI** (if not already installed):
-   
-   Check if the dev tunnel CLI is installed by running:
-   ```bash
-   devtunnel --version
-   ```
-   
-   If not installed, install it using one of the following methods:
-   
-   - **Windows (winget):**
-     ```bash
-     winget install Microsoft.devtunnel
-     ```
-   
-   - **Windows (PowerShell direct download):**
-     ```powershell
-     Invoke-WebRequest -Uri https://aka.ms/TunnelsCliDownload/win-x64 -OutFile devtunnel.exe
-     ```
-   
-   - **macOS (Homebrew):**
-     ```bash
-     brew install --cask devtunnel
-     ```
-   
-   - **Linux:**
-     ```bash
-     curl -sL https://aka.ms/DevTunnelCliInstall | bash
-     ```
-
-2. **Log in to dev tunnels:**
-   ```bash
-   devtunnel user login
-   ```
-   This will open a browser for authentication. Use your Microsoft account or Azure AD account.
-
-##### Create and start the dev tunnel
-
-1. **Determine the local port** your agent will run on. Ask the user:
-   
-   **"What local port will your agent run on?"**
-   This is the TCP port number where your agent application listens for incoming HTTP requests on your local machine. The dev tunnel will forward external traffic to this port. Common ports for bot/agent applications are 3978, 3979, 5000, or 8080. Check your agent's configuration or startup code to find the correct port.
-   *Default: `3978` (standard Bot Framework port)*
-   *Examples: `3978`, `5000`, `8080`*
-   
-   Use the provided port or default to `3978` if not specified.
-
-2. **Create a persistent (named) dev tunnel:**
-   ```bash
-   devtunnel create <agentName> --allow-anonymous
-   ```
-   Use the `agentName` value that the user provides in Step 3.3 as the tunnel name. This ensures consistency between the tunnel and agent naming. The `--allow-anonymous` flag allows the Agent 365 service to connect without additional authentication.
-   
-   > **Note:** Since the tunnel name depends on the `agentName` from Step 3.3, you should collect the agent name first (from Step 3.3), then return here to create the tunnel before completing the rest of Step 3.
-
-3. **Add a port to the tunnel:**
-   ```bash
-   devtunnel port create <agentName> --port-number <local-port>
-   ```
-   Replace `<agentName>` with the agent name from Step 3.3 and `<local-port>` with the port from step 1 (e.g., `3978`).
-
-4. **Get the tunnel URL:**
-   ```bash
-   devtunnel show <agentName>
-   ```
-   Look for the "Connect via browser" URL in the output. It will be in the format:
-   `https://<tunnel-id>-<port>.devtunnels.ms`
-
-5. **Construct the messaging endpoint:**
-   Append your agent's message handler path to the tunnel URL. Typically this is `/api/messages`:
-   ```
-   https://<tunnel-id>-<port>.devtunnels.ms/api/messages
-   ```
-   
-   This is your `messagingEndpoint` value.
-
-6. **Start hosting the tunnel:**
-   ```bash
-   devtunnel host <agentName>
-   ```
-
-> **Important:** Keep this terminal window open while developing/testing. The tunnel will stop when this command is terminated.
-
-> **Why use a persistent tunnel?** Persistent (named) tunnels maintain the same URL across sessions. This means you won't need to update your Agent 365 configuration every time you restart the tunnel. Simply run `devtunnel host <agentName>` to resume with the same endpoint URL.
-
-> **Alternative (Temporary tunnel):** If you prefer a quick, temporary tunnel without persistence, you can use:
-> ```bash
-> devtunnel host --port-number <local-port> --allow-anonymous
-> ```
-> Note: The URL will change each time you run this command, requiring you to update the messaging endpoint in Agent 365.
-
-##### Dev tunnel summary
-
-After setting up the dev tunnel, you should have:
-- [ ] Dev tunnel CLI installed and authenticated
-- [ ] A persistent tunnel created using the `agentName` from Step 3.3
-- [ ] The tunnel URL constructed as the `messagingEndpoint`
-- [ ] The tunnel running with `devtunnel host <agentName>`
-
-Proceed to Step 3.3 with the `messagingEndpoint` set to your dev tunnel URL.
-
-### Step 3.3: Prompt user for required values
-
-When prompting the user for input, you **MUST** provide clear context and guidance for each field. Use the detailed descriptions below to help the user provide informed, valid inputs.
-
-#### Required User Inputs
-
-Present each input request with its full description. Do not just ask for the value name - explain what it is and any constraints.
-
-| Field | Prompt Text (use this exact wording or similar) |
-|-------|------------------------------------------------|
-| `resourceGroup` | **"What Azure Resource Group should be used?"**<br>This is the name of an Azure Resource Group where Agent 365 resources will be created. You can use an existing resource group or provide a new name (it will be created if it doesn't exist). Resource group names must be 1-90 characters, can contain alphanumeric characters, periods, underscores, hyphens, and parentheses.<br>*Example: `a365-agents-rg`, `mycompany-agent365-resources`* |
-| `location` | **"What Azure region should resources be deployed to?"**<br>This is the Azure region/location where resources will be provisioned. Choose a region close to your users for best performance. Must be a valid Azure region identifier.<br>*Examples: `eastus`, `westus2`, `canadacentral`, `westeurope`, `australiaeast`* |
-| `agentName` | **"What name would you like for your agent?"**<br>⚠️ **IMPORTANT: This name must be GLOBALLY UNIQUE across all of Azure.** This name is used to derive multiple resource names including the web app URL (e.g., `{agentName}-webapp.azurewebsites.net`), the Agent Identity, Blueprint, and User Principal Name. If the name is already taken, deployment will fail.<br><br>**Requirements:**<br>- Must be globally unique (not used by anyone else in Azure)<br>- Use only lowercase letters, numbers, and hyphens<br>- Start with a letter, end with a letter or number<br>- Recommended: 3-20 characters<br>- Tip: Include your organization name or a unique identifier to ensure uniqueness<br>*Examples: `contoso-support-agent`, `mycompany-hr-bot-2025`, `acme-sales-assistant`* |
-| `managerEmail` | **"What is the email address of the agent's manager?"**<br>This is the email of the person who will manage/own this agent in Microsoft 365. Must be a valid email address from your organization's tenant (the same tenant you're logged into).<br>*Example: `admin@contoso.onmicrosoft.com`, `agent-admin@yourcompany.com`* |
-
-#### Additional Inputs for Azure-Hosted Deployments
-
-If `needDeployment: true`, also ask:
-
-| Field | Prompt Text (use this exact wording or similar) |
-|-------|------------------------------------------------|
-| `appServicePlanName` | **"What name should be used for the App Service Plan?"**<br>This is the name for the Azure App Service Plan that will host your agent's web app. The App Service Plan defines the compute resources (size, pricing tier) for the web app. If you have an existing plan you want to reuse, provide its name; otherwise, provide a new name.<br>*Examples: `myagent-app-plan`, `contoso-agents-plan`* |
-
-#### Additional Inputs for Non-Azure Hosted Deployments
-
-If `needDeployment: false` and not using dev tunnel:
-
-| Field | Prompt Text (use this exact wording or similar) |
-|-------|------------------------------------------------|
-| `messagingEndpoint` | **"What is the messaging endpoint URL for your agent?"**<br>This is the publicly accessible HTTPS URL where your self-hosted agent receives messages. This must be a valid HTTPS URL that the Agent 365 service can reach. Include the full path to your message handler endpoint.<br>*Examples: `https://myagent.example.com/api/messages`, `https://agent.contoso.com/bot/messages`* |
-
-#### Input Collection Best Practices
-
-When collecting inputs from the user:
-
-1. **Present all required fields together** - Show all fields the user needs to provide upfront so they can prepare the information
-2. **Highlight critical constraints** - Especially for `agentName`, emphasize the global uniqueness requirement prominently
-3. **Provide examples** - Always include example values to help the user understand the expected format
-4. **Validate before proceeding** - If possible, validate inputs (e.g., check if resource group exists, validate email format) before moving to the next step
-5. **Summarize collected values** - After collecting all inputs, display a summary table for the user to review before proceeding
-
-### Step 3.4: Derive naming values from base name
+### Step 3.3: Derive naming values from base name
 
 Using the `agentBaseName` provided by the user and the domain extracted from `managerEmail`, derive the following values:
 
@@ -527,7 +417,7 @@ Using the `agentBaseName` provided by the user and the domain extracted from `ma
 | `agentDescription` | `{baseName} - Agent 365 Agent` | `mya365agent - Agent 365 Agent` |
 | `webAppName` (Azure-hosted only) | `{baseName}-webapp` | `mya365agent-webapp` |
 
-### Step 3.5: Confirm derived values with user
+### Step 3.4: Confirm derived values with user
 
 After deriving the values above, present them to the user and ask for confirmation. Display the derived values in a clear format:
 
@@ -544,10 +434,10 @@ After deriving the values above, present them to the user and ask for confirmati
 
 Then ask: **"Would you like to update any of these derived values, or proceed with the defaults? (update/proceed)"**
 
-- If the user chooses **"proceed"**: Continue to Step 3.6 with the derived default values.
+- If the user chooses **"proceed"**: Continue to Step 3.5 with the derived default values.
 - If the user chooses **"update"**: Ask which field(s) they want to change and collect the new value(s). After updates, display the final values again for confirmation before proceeding.
 
-### Step 3.6: Create the a365.config.json file
+### Step 3.5: Create the a365.config.json file
 
 Create the `a365.config.json` file in the current working directory with all gathered and derived values.
 
@@ -598,7 +488,7 @@ Create the `a365.config.json` file in the current working directory with all gat
 }
 ```
 
-### Step 3.7: Import the configuration
+### Step 3.6: Import the configuration
 
 After creating the `a365.config.json` file, import it using:
 
