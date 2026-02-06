@@ -170,23 +170,17 @@ If the Azure CLI is installed, ensure that you are logged in to the correct Azur
 
 The user account you authenticate with must have sufficient privileges to create the necessary resources. According to documentation, the account needs to be at least an **Agent ID Administrator** or **Agent ID Developer**, and certain commands (like the full environment setup) require **Global Administrator + Azure Contributor** roles. If you attempt an operation without adequate permissions, it will fail. Thus, before proceeding, confirm that the logged-in user has one of the required roles (Global Admin is the safest choice for preview setups). If not, prompt the user to either use an appropriate account or have an admin grant the needed roles.
 
-### Custom client app registration (BLOCKING - MUST VALIDATE BEFORE PROCEEDING)
+### Custom client app validation
 
-> **CRITICAL BLOCKER:** The custom client app registration is a hard prerequisite. You MUST validate that the app exists and has all required permissions BEFORE running any `a365` CLI commands (including `a365 config init`, `a365 setup`, etc.). Skipping this validation will cause CLI commands to fail with authentication or permission errors.
+Ask the user: "Please provide the Application (client) ID for your custom Agent 365 client app registration." If they don't have one, see "What to do if validation fails" below.
 
-Verify that a custom client application is registered in Entra ID (Azure AD) for Agent 365 authentication. This is critical for the CLI to function (it uses this app to manage Agent Identity Blueprints). The user should have created this app as part of the prerequisites.
-
-#### Validate the custom client app and permissions
-
-If you do not already have the Application (client) ID, ask the user: "Do you have a custom client app registration for Agent 365? If yes, please provide the Application (client) ID." If they say no, see "What to do if validation fails" below.
-
-Once you have the client ID, copy the exact command below into the terminal (replacing `<CLIENT_APP_ID>` with the actual ID). This is a **single terminal call** — do NOT modify it, do NOT split it, do NOT construct your own queries:
+Once the user provides the ID, replace `<CLIENT_APP_ID>` in the command below and paste it into the terminal verbatim. **Use this exact command — do not write your own queries, do not split it, do not run `az ad app show` or `az ad app permission` separately:**
 
 ```bash
 az ad app show --id <CLIENT_APP_ID> --query "{appId:appId, displayName:displayName, requiredResourceAccess:requiredResourceAccess}" -o json && az ad app permission list-grants --id <CLIENT_APP_ID> --query "[].{resourceDisplayName:resourceDisplayName, scope:scope}" -o table
 ```
 
-**This one command returns everything you need.** Read its output to confirm the app exists, has the 5 required permissions listed in the table below, and that admin consent is granted. Do NOT run any additional `az ad app` commands — all the information is already in the output above.
+From the output of the command above, verify these 5 permissions appear with admin consent. If any are missing or consent is not granted, see "What to do if validation fails" below.
 
 Required **delegated** Microsoft Graph permissions (all must have **admin consent granted**):
 
@@ -200,29 +194,14 @@ Required **delegated** Microsoft Graph permissions (all must have **admin consen
 
 If the app does not exist, permissions are missing, or admin consent has not been granted, see "What to do if validation fails" below.
 
-#### What to do if validation fails
+**If validation fails** (app not found, permissions missing, or no admin consent):
 
-**If the app does not exist or is missing required permissions:**
+1. STOP — do not proceed to run any `a365` CLI commands.
+2. Inform the user the custom client app registration is missing or incomplete.
+3. Direct the user to the official setup guide: register the app, configure as a Public client with redirect URI `http://localhost:8400`, add all five permissions above, and have a Global Admin grant admin consent.
+4. Wait for the user to confirm the app is properly configured, then re-run the same validation command above.
 
-1. **STOP** - Do not proceed to run any `a365` CLI commands.
-2. **Inform the user** that the custom client app registration is missing or incomplete.
-3. **Direct the user** to follow the official setup guide to create/fix the app:
-   - Register a new app in Azure AD (typically named "Agent365 CLI")
-   - Configure it as a **Public client** with redirect URI `http://localhost:8400`
-   - Add all five delegated permissions listed above
-   - Have a **Global Administrator** grant admin consent for all permissions
-4. **Wait** for the user to confirm the app is properly configured before continuing.
-
-Do not attempt to automatically create this app via script unless explicitly authorized, because it requires admin privileges and specific consent.
-
-#### Proceed only when validation passes
-
-Only after you have confirmed:
-- [ ] The custom client app exists (you have a valid `clientAppId`)
-- [ ] All five required delegated permissions are configured
-- [ ] Admin consent has been granted for all permissions
-
-...may you proceed to Step 2.3 (Validate Language-Specific Prerequisites).
+Save the `clientAppId` value — it will be used automatically in Step 3 (do NOT ask the user for it again).
 
 ### Validate language-specific prerequisites (REQUIRED)
 
