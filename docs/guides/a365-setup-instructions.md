@@ -178,26 +178,20 @@ Verify that a custom client application is registered in Entra ID (Azure AD) for
 
 #### Validate the custom client app and permissions
 
-You MUST perform this validation before proceeding. Use the Azure CLI to query for the app registration.
+If you do not already have the Application (client) ID, ask the user: "Do you have a custom client app registration for Agent 365? If yes, please provide the Application (client) ID." If they say no, see "What to do if validation fails" below.
 
-1. **If you do not have an Application (client) ID**, ask the user to provide it.
-   - Ask: "Do you have a custom client app registration for Agent 365? If yes, please provide the Application (client) ID."
-   - If they say no or do not know, assume the custom app has not been created — see "What to do if validation fails" below.
-
-2. **Once you have the client ID**, run the following **single command** to validate the app exists, check its permissions, and verify admin consent:
+Once you have the client ID, run **exactly this one command** (replace `<CLIENT_APP_ID>` with the actual ID). Do NOT break it into multiple terminal calls:
 
 ```bash
 az ad app show --id <CLIENT_APP_ID> --query "{appId:appId, displayName:displayName, requiredResourceAccess:requiredResourceAccess}" -o json; az ad app permission list-grants --id <CLIENT_APP_ID> --query "[].{scope:scope}" -o table
 ```
 
-> **Run this as ONE command.** Do NOT split into separate terminal calls.
+**After the single command completes**, analyze its output to confirm all three of these from the returned data (do NOT run additional commands):
+- The app exists (output contains `appId` and `displayName`)
+- `requiredResourceAccess` lists all five required permissions below
+- `permission list-grants` shows the scopes have been granted
 
-From the output, verify:
-- The app exists (you see `appId` and `displayName`)
-- The `requiredResourceAccess` contains all five required delegated permissions listed below
-- The `permission list-grants` output shows the permissions have been granted
-
-The app must have these **delegated** Microsoft Graph permissions with **admin consent granted**:
+Required **delegated** Microsoft Graph permissions (all must have **admin consent granted**):
 
 | Permission | Description |
 |------------|-------------|
