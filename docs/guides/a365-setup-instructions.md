@@ -4,6 +4,8 @@
 
 ## BEFORE YOU BEGIN — MANDATORY EXECUTION PROTOCOL
 
+> **YOUR FIRST AND ONLY ACTION RIGHT NOW:** Call `manage_todo_list` (or equivalent) to create the 5 todos listed below. Then mark Todo 1 in-progress and jump to Step 1. **Do NOT read further. Do NOT run any commands. Do NOT gather values. Do NOT ask questions.**
+
 **RULE 1 — CREATE EXACTLY 5 TODOS.** Before running ANY commands, you MUST create a todo list with EXACTLY these 5 items. Use your todo/task tracking tool (e.g., `manage_todo_list`):
 
 - Todo 1: `Step 1: Verify and Install/Update the Agent 365 CLI`
@@ -37,6 +39,10 @@
 ...(10+ items)                      <-- WRONG: must be exactly 5
 ```
 
+**RULE 6 — IMMEDIATE FIRST ACTION.** Stop reading this document right now. Your VERY FIRST action — before reading Overview, before running ANY terminal commands, before gathering ANY Azure values — MUST be to create the 5-item todo list above using your task/todo tracking tool. Then mark Todo 1 as in-progress. Then go to Step 1. Do NOT run `az account show`. Do NOT ask about deployment type. Do NOT skip to Step 3. Those are sub-tasks of Step 3 which comes AFTER Steps 1 and 2 are fully completed.
+
+> **ANTI-PATTERN WARNING:** A common failure mode is to skip todos and jump to `az account show` or the deployment type question. These belong to Step 3. You MUST complete Step 1 (CLI install/verify) and Step 2 (prerequisites/client app validation) FIRST. If you find yourself running `az account show` before completing Steps 1 and 2, you are doing it wrong — STOP and go back.
+
 ---
 
 ## Overview
@@ -61,57 +67,24 @@ By following this guided setup, you will:
 4. Provision Azure infrastructure and Agent 365 identity resources
 5. Publish your agent manifest and deploy to Azure (or configure for local development)
 
-### Time estimate
-
-- **First-time setup with all prerequisites:** 30-45 minutes
-- **Setup with prerequisites already in place:** 15-20 minutes
-
----
-
-## Quick Start — How to Use This Guide
-
-### GitHub Copilot Agent Mode in VS Code (Recommended)
-
-1. **Open your agent project** in VS Code
-2. **Open GitHub Copilot Chat** (Ctrl+Shift+I or Cmd+Shift+I)
-3. **Switch to Agent mode** by clicking the mode selector and choosing "Agent"
-4. **Start the guided setup** by pasting the following prompt — include the full URL so the agent can fetch the instructions directly:
-   ```
-   Set up my a365 agent by following the instructions at https://raw.githubusercontent.com/microsoft/Agent365-devTools/main/docs/agent365-guided-setup/a365-setup-instructions.md
-   ```
-
-The AI agent will fetch the instructions from the URL and guide you through each step.
-
-### Other AI Coding Assistants (Cursor, Windsurf, etc.)
-
-1. **Open your agent project** in your IDE with an AI assistant
-2. **Start a conversation** and paste the same prompt:
-   ```
-   Set up my a365 agent by following the instructions at https://raw.githubusercontent.com/microsoft/Agent365-devTools/main/docs/agent365-guided-setup/a365-setup-instructions.md
-   ```
-
-> **Note:** Ensure your AI assistant has the ability to execute terminal commands, read/write files, and fetch web content. This guide is designed for "agentic" AI assistants that can take actions, not just provide text responses.
-
-### Manual Setup (Reference Only)
-
-If you prefer to set up manually without AI assistance, you can read through the steps below and execute them yourself. However, this document is optimized for AI-guided execution.
-
 ---
 
 ## Prerequisites Checklist
 
 Before starting, ensure you have:
 
-| Prerequisite | Required | How to Check |
-|--------------|----------|--------------|
-| **.NET SDK 8.0+** | Yes | Run `dotnet --version` |
-| **Azure CLI** | Yes | Run `az --version` |
-| **Azure subscription** | Yes | Run `az account show` |
-| **Global Admin or Agent ID Admin role** | Yes | Check in Azure Portal > Entra ID > Roles |
-| **Custom client app registration** | Yes | See Step 2 for validation |
-| **Build tools for your project type** | Yes | .NET/Node.js/Python depending on your agent |
+| Prerequisite | Required | Validated In |
+|--------------|----------|---------------|
+| **.NET SDK 8.0+** | Yes | Step 1 |
+| **Azure CLI** | Yes | Step 2 |
+| **Azure subscription** | Yes | Step 2 |
+| **Global Admin or Agent ID Admin role** | Yes | Step 2 |
+| **Custom client app registration** | Yes | Step 2 |
+| **Build tools for your project type** | Yes | Step 2 |
 
-> **Don't have prerequisites?** The AI agent will help you install missing components or guide you through setting them up.
+> **Don't have prerequisites?** The AI agent will help you install missing components during the appropriate step.
+> 
+> **DO NOT run any validation commands from this table now.** Each prerequisite is validated in its designated step. Follow the steps in order.
 
 ---
 
@@ -119,7 +92,15 @@ Before starting, ensure you have:
 
 You are an AI coding agent. This document has exactly 5 steps. Your job is to execute them in order.
 
-**YOUR FIRST ACTION:** Create 5 todos (listed above), mark Todo 1 in-progress, then begin Step 1. Do NOT summarize, analyze, or plan. Do NOT skip to Step 3. Start at Step 1.
+> **CHECKPOINT:** If you have NOT yet created exactly 5 todos using your task/todo tracking tool, STOP. Go back to "BEFORE YOU BEGIN" and follow RULE 1 and RULE 6. Do NOT proceed past this point without 5 todos created.
+
+**EXECUTION ORDER — NON-NEGOTIABLE:**
+1. Create 5 todos (see RULE 1 above)
+2. Mark Todo 1 in-progress, then execute Step 1 fully
+3. Mark Todo 1 complete, mark Todo 2 in-progress, then execute Step 2 fully
+4. Only after Steps 1 AND 2 are complete, proceed to Step 3
+
+Do NOT summarize, analyze, or plan ahead. Do NOT gather Azure values, ask deployment questions, or run `az account show` until you reach Step 3.
 
 > **CRITICAL:** Before running ANY `a365` CLI commands (`config init`, `setup`, `publish`, `deploy`), you MUST complete Step 2 to validate the custom client app registration in Entra ID. Skipping this causes all CLI commands to fail.
 
@@ -153,6 +134,10 @@ After installing or updating, confirm the CLI is ready by running `a365 -h` to d
 ### Adapt to CLI version differences
 
 The CLI is under active development, and some commands may have changed in recent versions. The instructions in this prompt assume you have the latest version. If you discover that a command referenced later (such as `publish`) is not recognized, it means you have an older version – in that case, upgrade the CLI. Using the latest version is essential because older flows (e.g. the `create-instance` command) have been deprecated in favor of new commands (`publish`, etc.). If upgrading isn't possible, adjust your steps according to the older CLI's documentation (for example, use the old `a365 create-instance` command in place of `publish`), but prefer to upgrade if at all feasible.
+
+### Step 1 completion
+
+> **BEFORE MOVING ON:** Mark Todo 1 (Step 1) as **completed** now. Then mark Todo 2 (Step 2) as **in-progress**. Only then proceed to Step 2 below. Do NOT jump ahead to Step 3.
 
 ---
 
@@ -270,15 +255,30 @@ pip --version
 >
 > If any validation failed, resolve the issue before continuing. Do NOT proceed to Step 3 until all checks pass.
 
+### Step 2 completion
+
+> **BEFORE MOVING ON:** Mark Todo 2 (Step 2) as **completed** now. Summarize to the user what was validated. Then mark Todo 3 (Step 3) as **in-progress**. Only then proceed to Step 3 below.
+>
+> **VERIFY YOUR TODO STATE:** At this point your todos MUST look like this:
+> - Todo 1: **completed** | Todo 2: **completed** | Todo 3: **in-progress** | Todo 4: not-started | Todo 5: not-started
+>
+> If your todo list does not exist or does not look like the above, STOP — go back to "BEFORE YOU BEGIN" and start over.
+
 ---
 
 ## Step 3: Configure the Agent 365 CLI (Initialize Configuration)
 
-> **PREREQUISITE CHECK:** Before proceeding with this step, you MUST have completed ALL validations in Step 2, including:
-> - Custom client app registration validation
-> - Language-specific build tools validation
+> **MANDATORY GATE — DO NOT PROCEED WITHOUT VERIFICATION:**
 > 
-> If you have not completed these validations, STOP and go back to Step 2.
+> Before executing ANY part of this step, verify ALL of the following:
+> - [ ] You created exactly 5 todos (RULE 1)
+> - [ ] Todo 1 (Step 1) is marked **completed** — CLI was verified/installed
+> - [ ] Todo 2 (Step 2) is marked **completed** — Azure CLI login confirmed, custom client app validated, build tools verified
+> - [ ] Todo 3 (Step 3) is marked **in-progress**
+> 
+> **If ANY checkbox above is not satisfied, STOP. Go back to the incomplete step and finish it first.**
+> 
+> Common mistake: Jumping to this step first because it has `az account show` commands. Those commands are for Step 3 ONLY — Steps 1 and 2 must be done first.
 
 Once all prerequisites are in place (CLI installed, Azure CLI logged in, **custom app validated**, **build tools verified**), create the Agent 365 CLI configuration file. The `a365 config init` command is non-interactive, so you must create an `a365.config.json` file directly and then import it.
 
