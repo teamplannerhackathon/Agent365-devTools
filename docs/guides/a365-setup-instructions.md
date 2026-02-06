@@ -180,16 +180,13 @@ Verify that a custom client application is registered in Entra ID (Azure AD) for
 
 If you do not already have the Application (client) ID, ask the user: "Do you have a custom client app registration for Agent 365? If yes, please provide the Application (client) ID." If they say no, see "What to do if validation fails" below.
 
-Once you have the client ID, run **exactly this one command** (replace `<CLIENT_APP_ID>` with the actual ID). Do NOT break it into multiple terminal calls:
+Once you have the client ID, copy the exact command below into the terminal (replacing `<CLIENT_APP_ID>` with the actual ID). This is a **single terminal call** — do NOT modify it, do NOT split it, do NOT construct your own queries:
 
 ```bash
-az ad app show --id <CLIENT_APP_ID> --query "{appId:appId, displayName:displayName, requiredResourceAccess:requiredResourceAccess}" -o json; az ad app permission list-grants --id <CLIENT_APP_ID> --query "[].{scope:scope}" -o table
+az ad app show --id <CLIENT_APP_ID> --query "{appId:appId, displayName:displayName, requiredResourceAccess:requiredResourceAccess}" -o json && az ad app permission list-grants --id <CLIENT_APP_ID> --query "[].{resourceDisplayName:resourceDisplayName, scope:scope}" -o table
 ```
 
-**After the single command completes**, analyze its output to confirm all three of these from the returned data (do NOT run additional commands):
-- The app exists (output contains `appId` and `displayName`)
-- `requiredResourceAccess` lists all five required permissions below
-- `permission list-grants` shows the scopes have been granted
+**This one command returns everything you need.** Read its output to confirm the app exists, has the 5 required permissions listed in the table below, and that admin consent is granted. Do NOT run any additional `az ad app` commands — all the information is already in the output above.
 
 Required **delegated** Microsoft Graph permissions (all must have **admin consent granted**):
 
